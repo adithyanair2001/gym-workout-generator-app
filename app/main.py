@@ -1,0 +1,393 @@
+"""Main FastAPI application for gym workout RAG system."""
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import logging
+import shutil
+import os
+
+from app.config import get_settings
+from app.models.user_profile import UserProfile
+from app.models.workout_plan import WorkoutPlan
+from app.services.exercisedb_client import ExerciseDBClient
+from app.services.vector_store import VectorStoreService
+from app.services.llm_service import LLMService
+from app.services.mlx_agent_service import MLXAgentService
+from app.services.database_tools import DatabaseTools
+from app.services.rag_pipeline import RAGPipeline
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Global service instances
+exercise_client = None
+vector_store = None
+llm_service = None
+mlx_agent = None
+database_tools = None
+rag_pipeline = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager for startup and shutdown events."""
+    global exercise_client, vector_store, llm_service, mlx_agent, database_tools, rag_pipeline
+    
+    settings = get_settings()
+    
+    # Startup
+    logger.info("=" * 60)
+    logger.info("Starting Gym Workout RAG System")
+    logger.info("=" * 60)
+    
+    try:
+        # Initialize ExerciseDB client with larger page size to reduce API calls
+        logger.info("Initializing ExerciseDB client...")
+        exercise_client = ExerciseDBClient(
+            api_url=settings.exercisedb_api_url,
+            page_size=settings.exercisedb_page_size
+        )
+        
+        # Initialize vector store
+        logger.info("Initializing vector store...")
+        vector_store = VectorStoreService(
+            settings.chroma_db_path,
+            settings.embedding_model
+        )
+        vector_store.initialize_collection()
+        
+        # Check if vector store exists and has content
+        exercise_count = vector_store.collection.count() if vector_store.collection else 0
+        
+        logger.info(f"Vector store status: {exercise_count} exercises found")
+        
+        # Only fetch if database is truly empty (count == 0)
+        if exercise_count == 0:
+            logger.info("=" * 60)
+            logger.info("Vector store is empty - starting exercise fetch")
+            logger.info("=" * 60)
+            exercises = await exercise_client.fetch_all_exercises()
+            logger.info(f"Fetched {len(exercises)} exercises, creating embeddings...")
+            await vector_store.add_exercises(exercises)
+            logger.info("=" * 60)
+            logger.info("Vector store initialized successfully")
+            logger.info("=" * 60)
+        else:
+            logger.info("=" * 60)
+            logger.info(f"✓ Vector store already contains {exercise_count} exercises")
+            logger.info("  Skipping exercise fetch and embedding generation")
+            logger.info(f"  To rebuild: rm -rf {settings.chroma_db_path}")
+            logger.info("=" * 60)
+        
+        # Initialize LLM service based on configuration
+        if settings.use_mlx:
+            logger.info("=" * 60)
+            logger.info("Using MLX local model (no LM Studio required)")
+            logger.info(f"Model: {settings.mlx_model_path}")
+            logger.info("=" * 60)
+            
+            # Initialize database tools for MLX agent
+            logger.info("Initializing database tools...")
+            database_tools = DatabaseTools(vector_store)
+            logger.info("Database tools initialized")
+            
+            # Initialize MLX agent service
+            logger.info("Initializing MLX agent service...")
+            mlx_agent = MLXAgentService(
+                model_path=settings.mlx_model_path,
+                database_tools=database_tools,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens
+            )
+            logger.info("MLX agent service initialized")
+            
+            # For MLX, we don't use the traditional RAG pipeline
+            rag_pipeline = None
+            llm_service = None
+        else:
+            logger.info("=" * 60)
+            logger.info("Using LM Studio (OpenAI-compatible API)")
+            logger.info(f"URL: {settings.llm_base_url}")
+            logger.info("=" * 60)
+            
+            # Initialize LLM service (connection will be tested when first used)
+            logger.info("Initializing LLM service...")
+            llm_service = LLMService(
+                base_url=settings.llm_base_url,
+                model=settings.llm_model,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens
+            )
+            logger.info("LLM service initialized (will connect on first use)")
+            
+            # Initialize RAG pipeline
+            logger.info("Initializing RAG pipeline...")
+            rag_pipeline = RAGPipeline(vector_store, llm_service)
+            logger.info("RAG pipeline initialized")
+            
+            mlx_agent = None
+            database_tools = None
+        
+        logger.info("=" * 60)
+        logger.info("Application startup complete!")
+        logger.info("=" * 60)
+        
+    except Exception as e:
+        logger.error(f"Error during startup: {e}")
+        raise
+    
+    yield
+    
+    # Shutdown
+    logger.info("=" * 60)
+    logger.info("Shutting down application...")
+    logger.info("=" * 60)
+    
+    # Close exercise client
+    if exercise_client:
+        await exercise_client.close()
+        logger.info("✓ Exercise client closed")
+    
+    # Delete vector database
+    if os.path.exists(settings.chroma_db_path):
+        try:
+            shutil.rmtree(settings.chroma_db_path)
+            logger.info(f"✓ Deleted vector database: {settings.chroma_db_path}")
+        except Exception as e:
+            logger.error(f"Failed to delete vector database: {e}")
+    
+    logger.info("=" * 60)
+    logger.info("Application shutdown complete")
+    logger.info("=" * 60)
+
+
+# Create FastAPI app
+app = FastAPI(
+    title="Gym Workout RAG API",
+    description="AI-powered personalized workout plan generator using RAG",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure appropriately for production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+async def root():
+    """Root endpoint with API information."""
+    return {
+        "message": "Gym Workout RAG API",
+        "version": "1.0.0",
+        "status": "running",
+        "endpoints": {
+            "health": "/health",
+            "generate": "/api/v1/generate",
+            "docs": "/docs"
+        }
+    }
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    try:
+        settings = get_settings()
+        vector_db_stats = vector_store.get_collection_stats() if vector_store else {"status": "not_initialized"}
+        
+        # Check LLM/MLX status based on configuration
+        if settings.use_mlx:
+            llm_status = "mlx_agent_ready" if mlx_agent else "mlx_agent_not_initialized"
+        else:
+            llm_status = "lm_studio_ready" if (llm_service and llm_service.test_connection()) else "lm_studio_not_connected"
+        
+        return {
+            "status": "healthy",
+            "vector_db": vector_db_stats,
+            "llm_mode": "mlx" if settings.use_mlx else "lm_studio",
+            "llm_status": llm_status,
+            "services": {
+                "exercise_client": exercise_client is not None,
+                "vector_store": vector_store is not None,
+                "llm_service": llm_service is not None,
+                "mlx_agent": mlx_agent is not None,
+                "rag_pipeline": rag_pipeline is not None
+            }
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
+
+
+@app.post("/api/v1/generate", response_model=WorkoutPlan)
+async def generate_workout(user_profile: UserProfile):
+    """Generate personalized workout plan.
+    
+    Args:
+        user_profile: User profile with fitness information
+        
+    Returns:
+        Generated workout plan
+        
+    Raises:
+        HTTPException: If generation fails
+    """
+    try:
+        settings = get_settings()
+        logger.info(f"Received workout generation request for {user_profile.fitness_level.value} user")
+        
+        # Use MLX agent or RAG pipeline based on configuration
+        if settings.use_mlx:
+            # Validate MLX agent is initialized
+            if not mlx_agent:
+                raise HTTPException(
+                    status_code=503,
+                    detail="MLX agent not initialized. Please try again later."
+                )
+            
+            logger.info("Generating workout plan with MLX agent...")
+            # Generate with MLX agent
+            raw_response = mlx_agent.generate_workout_plan(user_profile)
+            
+            # Parse JSON response
+            workout_data = mlx_agent.parse_json_response(raw_response)
+            
+            # Convert to WorkoutPlan model directly
+            from app.models.workout_plan import WorkoutDay, Exercise
+            
+            workout_days = []
+            for day_data in workout_data.get('workout_days', []):
+                main_workout = []
+                for ex_data in day_data.get('main_workout', []):
+                    exercise = Exercise(
+                        exercise_id=ex_data.get('exercise_id', ''),
+                        name=ex_data.get('name', ''),
+                        target_muscles=ex_data.get('target_muscles', []),
+                        sets=ex_data.get('sets', 3),
+                        reps=ex_data.get('reps', '8-12'),
+                        rest_seconds=ex_data.get('rest_seconds', 60),
+                        gif_url=ex_data.get('gif_url', ''),
+                        instructions=ex_data.get('instructions', []),
+                        notes=ex_data.get('notes')
+                    )
+                    main_workout.append(exercise)
+                
+                workout_day = WorkoutDay(
+                    day_number=day_data.get('day_number', 1),
+                    day_name=day_data.get('day_name', f"Day {day_data.get('day_number', 1)}"),
+                    focus=day_data.get('focus', 'Full Body'),
+                    warm_up=[],
+                    main_workout=main_workout,
+                    cool_down=[],
+                    estimated_duration_minutes=day_data.get('estimated_duration_minutes', user_profile.workout_duration_minutes),
+                    total_exercises=len(main_workout)
+                )
+                workout_days.append(workout_day)
+            
+            workout_plan = WorkoutPlan(
+                user_profile_summary={
+                    "age": user_profile.age,
+                    "gender": user_profile.gender,
+                    "fitness_level": user_profile.fitness_level.value,
+                    "goals": [g.value for g in user_profile.goals],
+                    "days_per_week": user_profile.gym_days_per_week
+                },
+                days_per_week=user_profile.gym_days_per_week,
+                workout_days=workout_days,
+                progression_notes=workout_data.get('progression_notes', 'Increase weight gradually as you get stronger'),
+                nutrition_tips=workout_data.get('nutrition_tips')
+            )
+        else:
+            # Validate RAG pipeline is initialized
+            if not rag_pipeline:
+                raise HTTPException(
+                    status_code=503,
+                    detail="RAG pipeline not initialized. Please try again later."
+                )
+            
+            logger.info("Generating workout plan with RAG pipeline...")
+            # Generate workout plan with traditional RAG
+            workout_plan = await rag_pipeline.generate_workout_plan(user_profile)
+        
+        logger.info(f"Successfully generated workout plan with {len(workout_plan.workout_days)} days")
+        return workout_plan
+        
+    except ValueError as e:
+        logger.error(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error generating workout: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate workout plan: {str(e)}")
+
+
+@app.get("/api/v1/exercises/search")
+async def search_exercises(query: str, limit: int = 10):
+    """Search exercises by query.
+    
+    Args:
+        query: Search query
+        limit: Maximum number of results
+        
+    Returns:
+        List of matching exercises
+    """
+    try:
+        if not vector_store:
+            raise HTTPException(status_code=503, detail="Vector store not initialized")
+        
+        exercises = vector_store.search_exercises(query=query, n_results=limit)
+        
+        return {
+            "query": query,
+            "count": len(exercises),
+            "exercises": exercises
+        }
+        
+    except Exception as e:
+        logger.error(f"Error searching exercises: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/stats")
+async def get_stats():
+    """Get system statistics."""
+    try:
+        stats = {
+            "vector_db": vector_store.get_collection_stats() if vector_store else {},
+            "llm_model": llm_service.model if llm_service else None,
+            "services_initialized": {
+                "exercise_client": exercise_client is not None,
+                "vector_store": vector_store is not None,
+                "llm_service": llm_service is not None,
+                "rag_pipeline": rag_pipeline is not None
+            }
+        }
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    import uvicorn
+    settings = get_settings()
+    
+    uvicorn.run(
+        "app.main:app",
+        host=settings.api_host,
+        port=settings.api_port,
+        reload=True,
+        log_level=settings.log_level.lower()
+    )
+
+# Made with Bob

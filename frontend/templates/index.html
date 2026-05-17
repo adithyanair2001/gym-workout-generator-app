@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gym Workout RAG - AI Workout Planner</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .btn-generate {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .btn-generate:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-generate:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .output-area {
+            min-height: 400px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .workout-plan {
+            padding: 20px;
+        }
+
+        .workout-day {
+            background: #f9fafb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .workout-day h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .exercise {
+            background: white;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 3px solid #667eea;
+        }
+
+        .exercise-name {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .exercise-details {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏋️ Gym Workout RAG</h1>
+            <p>AI-Powered Personalized Workout Planner</p>
+        </div>
+
+        <div class="main-content">
+            <div class="card">
+                <h2>Your Profile</h2>
+                <form id="workoutForm" onsubmit="generateWorkout(event)">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Height (cm)</label>
+                            <input type="number" id="height" required min="100" max="250" value="170">
+                        </div>
+                        <div class="form-group">
+                            <label>Weight (kg)</label>
+                            <input type="number" id="weight" required min="30" max="200" value="70">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Age</label>
+                            <input type="number" id="age" required min="13" max="100" value="25">
+                        </div>
+                        <div class="form-group">
+                            <label>Gender</label>
+                            <select id="gender" required>
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Fitness Level</label>
+                        <select id="fitness_level" required>
+                            <option value="beginner">Beginner</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Days Per Week</label>
+                            <input type="number" id="days_per_week" required min="1" max="7" value="3">
+                        </div>
+                        <div class="form-group">
+                            <label>Session Duration (min)</label>
+                            <input type="number" id="session_duration" required min="30" max="180" value="60">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Primary Goal</label>
+                        <select id="goals" required>
+                            <option value="muscle_gain">Muscle Gain</option>
+                            <option value="weight_loss">Weight Loss</option>
+                            <option value="strength">Strength</option>
+                            <option value="endurance">Endurance</option>
+                            <option value="general_fitness">General Fitness</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Available Equipment (comma-separated)</label>
+                        <input type="text" id="equipment" required placeholder="barbell, dumbbell, bench" value="barbell,dumbbell,bench">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Injuries/Limitations (optional)</label>
+                        <input type="text" id="injuries" placeholder="knee pain, shoulder injury">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Preferred Split</label>
+                        <select id="preferred_split">
+                            <option value="full_body">Full Body</option>
+                            <option value="upper_lower">Upper/Lower</option>
+                            <option value="push_pull_legs">Push/Pull/Legs</option>
+                            <option value="bro_split">Bro Split</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn-generate" id="generateBtn">
+                        Generate Workout Plan
+                    </button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2>Your Workout Plan</h2>
+                <div class="output-area" id="outputArea">
+                    <div class="alert alert-info">
+                        <strong>Welcome!</strong> Fill in your details and click "Generate Workout Plan" to get your personalized workout.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function generateWorkout(event) {
+            event.preventDefault();
+            
+            const outputArea = document.getElementById('outputArea');
+            const generateBtn = document.getElementById('generateBtn');
+            
+            // Show loading
+            outputArea.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Generating your personalized workout plan...</p>
+                    <p style="color: #666; font-size: 0.9em;">This may take 30-60 seconds</p>
+                </div>
+            `;
+            generateBtn.disabled = true;
+            
+            // Collect form data
+            const formData = {
+                height: document.getElementById('height').value,
+                weight: document.getElementById('weight').value,
+                age: document.getElementById('age').value,
+                gender: document.getElementById('gender').value,
+                fitness_level: document.getElementById('fitness_level').value,
+                days_per_week: document.getElementById('days_per_week').value,
+                session_duration: document.getElementById('session_duration').value,
+                goals: [document.getElementById('goals').value],
+                equipment: document.getElementById('equipment').value,
+                injuries: document.getElementById('injuries').value,
+                preferred_split: document.getElementById('preferred_split').value
+            };
+            
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayWorkoutPlan(data.workout_plan);
+                } else {
+                    outputArea.innerHTML = `
+                        <div class="alert alert-error">
+                            <strong>Error:</strong> ${data.message}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                outputArea.innerHTML = `
+                    <div class="alert alert-error">
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+            } finally {
+                generateBtn.disabled = false;
+            }
+        }
+
+        function displayWorkoutPlan(plan) {
+            const outputArea = document.getElementById('outputArea');
+            
+            let html = '<div class="workout-plan">';
+            html += `<h3>Your ${plan.days_per_week}-Day Workout Plan</h3>`;
+            html += `<p style="color: #666; margin-bottom: 20px;">${plan.plan_duration_weeks} weeks program</p>`;
+            
+            plan.workout_days.forEach(day => {
+                html += `
+                    <div class="workout-day">
+                        <h3>${day.day_name}</h3>
+                        <p style="color: #666; margin-bottom: 10px;"><strong>Focus:</strong> ${day.focus}</p>
+                        <p style="color: #666; margin-bottom: 10px;"><strong>Duration:</strong> ~${day.estimated_duration_minutes} minutes</p>
+                        
+                        <h4 style="margin-top: 15px; color: #667eea;">Main Workout:</h4>
+                `;
+                
+                day.main_workout.forEach(exercise => {
+                    html += `
+                        <div class="exercise">
+                            <div class="exercise-name">${exercise.name}</div>
+                            <div class="exercise-details">
+                                ${exercise.sets} sets × ${exercise.reps} reps | 
+                                Rest: ${exercise.rest_seconds}s | 
+                                Target: ${exercise.target_muscles.join(', ')}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+            });
+            
+            if (plan.progression_notes) {
+                html += `
+                    <div class="alert alert-info" style="margin-top: 20px;">
+                        <strong>Progression Notes:</strong><br>
+                        ${plan.progression_notes}
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            outputArea.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
