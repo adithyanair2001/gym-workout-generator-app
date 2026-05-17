@@ -524,6 +524,51 @@ const App = {
 };
 
 // ============================================
+// File Browser Handlers
+// ============================================
+window.handleMLXDirectorySelect = (event) => {
+    const files = event.target.files;
+    if (files.length > 0) {
+        // Get the directory path from the first file
+        const filePath = files[0].webkitRelativePath || files[0].name;
+        // Extract directory path (remove filename)
+        const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
+        
+        // For MLX models, we need the full path
+        // Since we can't get absolute path from browser, we'll use the relative path
+        // and let the user adjust if needed
+        const modelPathInput = document.getElementById('mlxModelPath');
+        if (dirPath) {
+            // Show the relative path selected
+            modelPathInput.value = dirPath;
+            console.log('MLX model directory selected:', dirPath);
+        }
+    }
+};
+
+window.handleGGUFFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+        // For GGUF, we just need the filename
+        // User will need to provide full path or we use the name
+        const modelPathInput = document.getElementById('ggufModelPath');
+        modelPathInput.value = file.name;
+        console.log('GGUF model file selected:', file.name);
+        
+        // Show alert about full path
+        const outputArea = document.getElementById('modelValidationOutput');
+        if (outputArea) {
+            outputArea.innerHTML = `
+                <div class="alert alert-info">
+                    <strong>📝 Note:</strong> File selected: ${file.name}<br>
+                    Please enter the full path to this file in the text field above.
+                </div>
+            `;
+        }
+    }
+};
+
+// ============================================
 // Global Functions (for inline event handlers)
 // ============================================
 window.updateModelOptions = () => ModelConfig.updateOptions();

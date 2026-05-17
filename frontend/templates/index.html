@@ -49,8 +49,17 @@
                 <!-- MLX Options -->
                 <div id="mlxOptions" class="model-options">
                     <div class="form-group">
-                        <label for="mlxModelPath">MLX Model Path</label>
-                        <input type="text" id="mlxModelPath" value="/Users/adithyanair/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit">
+                        <label for="mlxModelPath">MLX Model Directory</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="mlxModelPath" value="/Users/adithyanair/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit" style="flex: 1;">
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('mlxModelFileInput').click()" style="white-space: nowrap;">
+                                📁 Browse
+                            </button>
+                        </div>
+                        <input type="file" id="mlxModelFileInput" webkitdirectory directory multiple style="display: none;" onchange="handleMLXDirectorySelect(event)">
+                        <small style="color: var(--text-tertiary); display: block; margin-top: 5px;">
+                            Select any file in the model directory (e.g., config.json)
+                        </small>
                     </div>
                 </div>
 
@@ -75,8 +84,17 @@
                 <!-- GGUF Options -->
                 <div id="ggufOptions" class="model-options" style="display:none;">
                     <div class="form-group">
-                        <label for="ggufModelPath">GGUF Model Path</label>
-                        <input type="text" id="ggufModelPath" placeholder="/path/to/model.gguf">
+                        <label for="ggufModelPath">GGUF Model File</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="ggufModelPath" placeholder="/path/to/model.gguf" style="flex: 1;">
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('ggufModelFileInput').click()" style="white-space: nowrap;">
+                                📁 Browse
+                            </button>
+                        </div>
+                        <input type="file" id="ggufModelFileInput" accept=".gguf" style="display: none;" onchange="handleGGUFFileSelect(event)">
+                        <small style="color: var(--text-tertiary); display: block; margin-top: 5px;">
+                            Select a .gguf model file
+                        </small>
                     </div>
                     <div class="form-row">
                         <div class="form-group">

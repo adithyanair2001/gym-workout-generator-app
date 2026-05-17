@@ -59,13 +59,13 @@ def main():
     
     print("\n" + "=" * 60)
     print("🌐 Starting Flask frontend server...")
-    print(f"📍 Frontend: http://localhost:5000")
+    print(f"📍 Frontend: http://localhost:7500")
     print(f"📍 Backend API: {server_manager.fastapi_url}")
     print("\n💡 Press Ctrl+C to stop both servers")
     print("=" * 60 + "\n")
     
     try:
-        app.run(debug=True, port=5000, use_reloader=False)
+        app.run(debug=True, port=7500, use_reloader=False)
     except KeyboardInterrupt:
         print("\n\n🛑 Shutting down servers...")
         server_manager.stop_server()

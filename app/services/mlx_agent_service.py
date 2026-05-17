@@ -24,9 +24,9 @@ class MLXAgentService:
     """Service for MLX-based LLM agent that can query the database using tools."""
     
     # Agent configuration constants
-    MAX_ITERATIONS = 3  # Reduced to 3 for faster completion
-    MAX_TOOL_CALLS = 5  # Keep at 5 to gather enough exercise data
-    MAX_CONVERSATION_LENGTH = 40000  # Increased for longer conversations
+    MAX_ITERATIONS = 10  # Increased to allow more iterations for complex plans
+    MAX_TOOL_CALLS = 25  # Increased to 25 to search through many exercises
+    MAX_CONVERSATION_LENGTH = 100000  # Increased for longer conversations with many tool calls
     
     def __init__(
         self,
