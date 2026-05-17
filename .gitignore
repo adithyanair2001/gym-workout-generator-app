@@ -25,6 +25,9 @@ venv/
 ENV/
 env/
 
+# Environment Variables
+.env
+
 # IDE
 .vscode/
 .idea/
@@ -32,43 +35,23 @@ env/
 *.swo
 *~
 
-# Environment variables
-.env
-.env.local
-.env.*
-.env.production
-.env.staging
-.env.development
-
-# ChromaDB
-data/chroma_db/
-*.db
-
-# Logs
-*.log
-logs/
-agent_output.log
-failed_parse.json
-
 # OS
 .DS_Store
 Thumbs.db
 
-# Backup files
+# Logs
+*.log
+agent_output.log
+
+# Test files
+test_*.py
+check_*.py
+
+# Data
+data/chroma_db/
+*.sqlite3
+
+# Temporary files
+*.tmp
 *.bak
-*.backup
-*.swp
-*.swo
-*~
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# Model cache
-.cache/
-models/
+*.cache

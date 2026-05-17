@@ -1,6 +1,6 @@
 """
 API Routes for Gym Workout RAG
-Handles workout generation requests
+Handles workout generation requests and model validation
 """
 
 import requests
@@ -9,6 +9,309 @@ from . import api_bp
 
 # Configuration
 FASTAPI_URL = "http://localhost:8000"
+
+
+@api_bp.route('/validate-model', methods=['POST'])
+def validate_model():
+    """
+    Validate model configuration and test connection.
+    
+    Expected JSON payload:
+    {
+        "model_type": str,
+        "llm_base_url": str (optional),
+        "llm_model": str (optional),
+        "llm_api_key": str (optional),
+        "mlx_model_path": str (optional),
+        "gguf_model_path": str (optional)
+    }
+    
+    Returns:
+    {
+        "success": bool,
+        "message": str,
+        "details": {...}
+    }
+    """
+    try:
+        data = request.json
+        model_type = data.get('model_type')
+        
+        if model_type == 'mlx':
+            return _validate_mlx_model(data)
+        elif model_type == 'omlx':
+            return _validate_omlx_server(data)
+        elif model_type == 'gguf':
+            return _validate_gguf_model(data)
+        elif model_type == 'local_server':
+            return _validate_local_server(data)
+        elif model_type in ['openai', 'anthropic', 'groq']:
+            return _validate_public_api(data, model_type)
+        else:
+            return jsonify({
+                "success": False,
+                "message": f"Unknown model type: {model_type}"
+            }), 400
+            
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Validation error: {str(e)}"
+        }), 500
+
+
+def _validate_mlx_model(data):
+    """Validate MLX model path exists."""
+    import os
+    
+    model_path = data.get('mlx_model_path', '')
+    
+    if not model_path:
+        return jsonify({
+            "success": False,
+            "message": "MLX model path is required"
+        }), 400
+    
+    # Check if path exists
+    if not os.path.exists(model_path):
+        return jsonify({
+            "success": False,
+            "message": f"MLX model not found at: {model_path}",
+            "details": {
+                "path": model_path,
+                "exists": False
+            }
+        }), 404
+    
+    # Check if it's a directory with required files
+    if not os.path.isdir(model_path):
+        return jsonify({
+            "success": False,
+            "message": "MLX model path must be a directory"
+        }), 400
+    
+    return jsonify({
+        "success": True,
+        "message": "MLX model found and accessible",
+        "details": {
+            "path": model_path,
+            "exists": True,
+            "type": "mlx"
+        }
+    })
+
+
+def _validate_omlx_server(data):
+    """Validate OMLX server connection."""
+    server_url = data.get('llm_base_url', '')
+    model_name = data.get('llm_model', '')
+    
+    if not server_url:
+        return jsonify({
+            "success": False,
+            "message": "OMLX server URL is required"
+        }), 400
+    
+    try:
+        # Test connection to OMLX server
+        response = requests.get(f"{server_url}/models", timeout=5)
+        
+        if response.status_code == 200:
+            models = response.json()
+            return jsonify({
+                "success": True,
+                "message": "OMLX server is accessible",
+                "details": {
+                    "server_url": server_url,
+                    "model": model_name,
+                    "available_models": models.get('data', [])
+                }
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": f"OMLX server returned status {response.status_code}"
+            }), response.status_code
+            
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            "success": False,
+            "message": "Cannot connect to OMLX server. Make sure it's running.",
+            "details": {
+                "server_url": server_url,
+                "hint": "Run: omlx serve --model <model-name> --port 8000"
+            }
+        }), 503
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "success": False,
+            "message": "Connection to OMLX server timed out"
+        }), 504
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Error connecting to OMLX server: {str(e)}"
+        }), 500
+
+
+def _validate_gguf_model(data):
+    """Validate GGUF model path exists."""
+    import os
+    
+    model_path = data.get('gguf_model_path', '')
+    
+    if not model_path:
+        return jsonify({
+            "success": False,
+            "message": "GGUF model path is required"
+        }), 400
+    
+    if not os.path.exists(model_path):
+        return jsonify({
+            "success": False,
+            "message": f"GGUF model not found at: {model_path}",
+            "details": {
+                "path": model_path,
+                "exists": False
+            }
+        }), 404
+    
+    if not model_path.endswith('.gguf'):
+        return jsonify({
+            "success": False,
+            "message": "File must have .gguf extension"
+        }), 400
+    
+    return jsonify({
+        "success": True,
+        "message": "GGUF model found and accessible",
+        "details": {
+            "path": model_path,
+            "exists": True,
+            "type": "gguf"
+        }
+    })
+
+
+def _validate_local_server(data):
+    """Validate local server (LM Studio/OLLAMA) connection."""
+    server_url = data.get('llm_base_url', '')
+    
+    if not server_url:
+        return jsonify({
+            "success": False,
+            "message": "Server URL is required"
+        }), 400
+    
+    try:
+        # Test connection to local server
+        response = requests.get(f"{server_url}/models", timeout=5)
+        
+        if response.status_code == 200:
+            models = response.json()
+            return jsonify({
+                "success": True,
+                "message": "Local server is accessible",
+                "details": {
+                    "server_url": server_url,
+                    "available_models": models.get('data', [])
+                }
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": f"Server returned status {response.status_code}"
+            }), response.status_code
+            
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            "success": False,
+            "message": "Cannot connect to local server. Make sure LM Studio or OLLAMA is running.",
+            "details": {
+                "server_url": server_url,
+                "hint": "Start LM Studio or run: ollama serve"
+            }
+        }), 503
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "success": False,
+            "message": "Connection to server timed out"
+        }), 504
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Error connecting to server: {str(e)}"
+        }), 500
+
+
+def _validate_public_api(data, model_type):
+    """Validate public API (OpenAI/Anthropic/Groq) credentials."""
+    api_key = data.get('llm_api_key', '')
+    model_name = data.get('llm_model', '')
+    
+    if not api_key:
+        return jsonify({
+            "success": False,
+            "message": f"{model_type.title()} API key is required"
+        }), 400
+    
+    # API endpoint mapping
+    endpoints = {
+        'openai': 'https://api.openai.com/v1/models',
+        'anthropic': 'https://api.anthropic.com/v1/messages',
+        'groq': 'https://api.groq.com/openai/v1/models'
+    }
+    
+    headers = {}
+    if model_type == 'openai' or model_type == 'groq':
+        headers['Authorization'] = f'Bearer {api_key}'
+    elif model_type == 'anthropic':
+        headers['x-api-key'] = api_key
+        headers['anthropic-version'] = '2023-06-01'
+    
+    try:
+        # Test API key with a simple request
+        response = requests.get(
+            endpoints[model_type],
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            return jsonify({
+                "success": True,
+                "message": f"{model_type.title()} API key is valid",
+                "details": {
+                    "model": model_name,
+                    "provider": model_type
+                }
+            })
+        elif response.status_code == 401:
+            return jsonify({
+                "success": False,
+                "message": f"Invalid {model_type.title()} API key"
+            }), 401
+        else:
+            return jsonify({
+                "success": False,
+                "message": f"API returned status {response.status_code}: {response.text}"
+            }), response.status_code
+            
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            "success": False,
+            "message": f"Cannot connect to {model_type.title()} API. Check your internet connection."
+        }), 503
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "success": False,
+            "message": f"Connection to {model_type.title()} API timed out"
+        }), 504
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Error validating API key: {str(e)}"
+        }), 500
 
 
 @api_bp.route('/generate', methods=['POST'])

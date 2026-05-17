@@ -1,771 +1,323 @@
-# Gym Workout RAG System
+# Gym Workout RAG Backend
 
-> AI-powered personalized workout plan generator using Retrieval-Augmented Generation (RAG)
+AI-powered personalized workout planner using Retrieval-Augmented Generation (RAG) with ChromaDB vector database and multiple LLM deployment options.
 
-## 📋 Table of Contents
+## 🌟 Features
 
-- [Overview](#overview)
-- [Features](#features)
-- [System Architecture](#system-architecture)
-- [Technology Stack](#technology-stack)
-- [Quick Start](#quick-start)
-- [Project Structure](#project-structure)
-- [API Documentation](#api-documentation)
-- [Technical Specifications](#technical-specifications)
-- [Development Guide](#development-guide)
-- [Deployment](#deployment)
-- [Performance](#performance)
-- [Contributing](#contributing)
+- **RAG Pipeline**: Retrieves relevant exercises from 1500+ exercises using semantic search
+- **Multiple LLM Options**: MLX, OMLX, GGUF, LM Studio, OpenAI, Anthropic, Groq
+- **Vector Database**: ChromaDB with sentence-transformers embeddings
+- **Modern Frontend**: Beautiful, responsive UI with gradient design
+- **Scalable Architecture**: Blueprint-based Flask app with modular design
+- **Persistent Storage**: Vector database persists between restarts
 
----
-
-## Overview
-
-This backend system generates personalized gym workout plans using:
-- **ExerciseDB**: 1,500+ verified exercises
-- **ChromaDB**: Vector database for semantic search
-- **MLX-LM**: Apple Silicon optimized LLM (Qwen3.5-9B)
-- **Agent-based RAG**: LLM directly queries database using tools
-
-### Key Capabilities
-
-- ✅ Personalized workout plans based on user profile
-- ✅ Semantic exercise search with vector embeddings
-- ✅ Equipment-based filtering
-- ✅ Injury-aware exercise selection
-- ✅ Multiple workout splits (full body, upper/lower, PPL)
-- ✅ Structured JSON output for frontend integration
-- ✅ Agent-based approach (LLM decides which tools to call)
-
----
-
-## Features
-
-### User Input Parameters
-
-- Physical attributes (height, weight, age, gender)
-- Fitness level (beginner/intermediate/advanced)
-- Training frequency (1-7 days/week)
-- Session duration (30-120 minutes)
-- Goals (muscle gain, weight loss, strength, endurance)
-- Available equipment
-- Injuries/limitations
-- Preferred workout split
-
-### Output Format
-
-```json
-{
-  "user_profile_summary": {...},
-  "plan_duration_weeks": 4,
-  "days_per_week": 4,
-  "workout_days": [
-    {
-      "day_number": 1,
-      "day_name": "Day 1: Upper Body Push",
-      "focus": "Chest, Shoulders, Triceps",
-      "warm_up": [...],
-      "main_workout": [
-        {
-          "exercise_id": "0001",
-          "name": "Barbell Bench Press",
-          "target_muscles": ["pectorals"],
-          "sets": 4,
-          "reps": "8-12",
-          "rest_seconds": 90,
-          "gif_url": "...",
-          "instructions": [...]
-        }
-      ],
-      "cool_down": [...],
-      "estimated_duration_minutes": 60
-    }
-  ],
-  "progression_notes": "...",
-  "generated_at": "2026-05-10T14:00:00Z"
-}
-```
-
----
-
-## System Architecture
-
-```
-┌─────────────┐
-│  Frontend   │
-│     App     │
-└──────┬──────┘
-       │ POST /generate
-       ▼
-┌─────────────────────────────────────┐
-│         FastAPI Backend             │
-│  ┌──────────────────────────────┐  │
-│  │   MLX Agent Service          │  │
-│  │  1. Receives user profile    │  │
-│  │  2. LLM decides which tools  │  │
-│  │  3. Calls database tools     │  │
-│  │  4. Generates workout plan   │  │
-│  └──────────────────────────────┘  │
-└─────────────────────────────────────┘
-       │
-       ▼
-┌─────────────────────────────────────┐
-│      Data Layer                     │
-│  ┌────────────┐  ┌──────────────┐  │
-│  │ ExerciseDB │  │   ChromaDB   │  │
-│  │    API     │  │ Vector Store │  │
-│  └────────────┘  └──────────────┘  │
-└─────────────────────────────────────┘
-```
-
-### How the Two Models Work Together
-
-The system uses **two different AI models** that work in tandem:
-
-#### 1️⃣ Embedding Model (sentence-transformers)
-**Purpose**: Converts text to vectors for semantic search
-- **Current Model**: `all-MiniLM-L6-v2` (384 dimensions)
-- **Location**: [`vector_store.py`](app/services/vector_store.py)
-- **Job**: Find relevant exercises from database
-
-**Process**:
-```
-ExerciseDB Exercise → Text Document → Embedding Model → Vector → ChromaDB
-User Query → Embedding Model → Vector → Search ChromaDB → Top 50 Exercises
-```
-
-**Example**:
-```python
-# Exercise description:
-"Barbell Bench Press - Target: chest, Equipment: barbell"
-↓ Embedding Model
-[0.234, -0.567, 0.891, ...] (384 numbers)
-
-# User query:
-"intermediate chest exercises with barbell"
-↓ Embedding Model
-[0.245, -0.543, 0.876, ...] (384 numbers)
-
-# ChromaDB finds similar vectors → Returns relevant exercises
-```
-
-#### 2️⃣ LLM Model (Qwen3.5-9B via MLX)
-**Purpose**: Generates the actual workout plan
-- **Current Model**: Qwen3.5-9B (4-bit quantized, 9 billion parameters)
-- **Location**: [`mlx_agent_service.py`](app/services/mlx_agent_service.py)
-- **Job**: Design personalized workout plan
-
-**Process**:
-```
-User Profile + 50 Relevant Exercises → LLM → Complete Workout Plan
-```
-
-**What it generates**:
-- Which exercises for each day
-- Sets, reps, and rest times
-- Workout split (upper/lower, PPL, etc.)
-- Progression notes
-- Nutrition tips
-
-#### Complete Flow
-
-```
-Step 1: User Input
-├─ "Build muscle, 4 days/week, intermediate, barbell & dumbbell"
-
-Step 2: Embedding Model (sentence-transformers)
-├─ Converts query to vector: [0.234, -0.567, ...]
-├─ Searches ChromaDB for similar exercises
-└─ Returns: Top 50 relevant exercises
-
-Step 3: LLM Model (Qwen3.5-9B)
-├─ Receives: User profile + 50 exercises
-├─ Reasons: "This person needs upper/lower split..."
-├─ Generates: Complete 4-day workout plan
-│   ├─ Day 1: Upper Body (Bench Press 4x8-12, Rows 4x8-12...)
-│   ├─ Day 2: Lower Body (Squats 4x8-12, Lunges 3x10-15...)
-│   ├─ Day 3: Upper Body (Overhead Press 4x8-12...)
-│   └─ Day 4: Lower Body (Deadlifts 4x6-8...)
-└─ Returns: JSON workout plan
-
-Step 4: Post-Processing
-└─ Validates and formats the final workout plan
-```
-
-#### Model Comparison
-
-| Aspect | Embedding Model | LLM Model (Qwen3.5-9B) |
-|--------|----------------|------------------------|
-| **Purpose** | Find relevant exercises | Generate workout plan |
-| **Input** | Text query | User profile + exercises |
-| **Output** | List of exercises | Complete workout plan |
-| **Speed** | ⚡⚡⚡ Very fast (50-100ms) | ⚡⚡ Slower (10-30s) |
-| **Size** | 80MB | 5-6GB |
-| **Runs on** | CPU (fine) | GPU recommended |
-| **Upgradeable?** | Yes → `all-mpnet-base-v2` | Yes → Qwen3.5-14B, Llama 3.1 |
-
-#### Why Two Models?
-
-**Embedding Model** = Search engine that finds exercises
-- Fast and efficient
-- Understands semantic meaning
-- Finds "chest exercises" even if query says "pectoral training"
-
-**LLM Model** = Personal trainer brain that designs workouts
-- Understands context and goals
-- Makes intelligent decisions
-- Creates structured, personalized plans
-
-**Together** = Powerful RAG system that combines retrieval + generation!
-
-### Agent-Based RAG Pipeline
-
-Unlike traditional RAG where the system decides what to retrieve, our agent-based approach lets the LLM decide:
-
-1. **User Request** → MLX Agent receives user profile
-2. **LLM Reasoning** → Model decides which database tools to call
-3. **Tool Execution** → Agent executes `search_exercises()`, `filter_by_equipment()`, etc.
-4. **Iterative Process** → LLM can call multiple tools based on results
-5. **Plan Generation** → Final workout plan generated with all context
-
-**Available Tools:**
-- `search_exercises(query, n_results)` - Semantic search
-- `filter_by_equipment(equipment_list, n_results)` - Filter by equipment
-- `get_exercise_details(exercise_id)` - Get specific exercise info
-
----
-
-## Technology Stack
-
-### Core Framework
-- **FastAPI** - Modern, fast Python web framework
-- **Python 3.11+** - Latest Python features
-- **Pydantic** - Data validation and settings
-
-### AI/ML Stack
-- **MLX-LM** - Apple Silicon optimized ML framework
-- **Qwen3.5-9B** - 9B parameter model (4-bit quantized)
-- **sentence-transformers** - all-MiniLM-L6-v2 for embeddings
-- **ChromaDB** - Vector database for semantic search
-
-### Key Libraries
-```txt
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-pydantic==2.5.0
-httpx==0.26.0
-chromadb==0.4.22
-sentence-transformers==2.3.1
-mlx-lm>=0.31.0
-langchain>=0.1.0
-langchain-community>=0.0.10
-```
-
-### Why These Choices?
-
-**ChromaDB over FAISS:**
-- Built-in metadata filtering (equipment, muscle groups)
-- Native persistence (no manual save/load)
-- Perfect for 1,500 exercises
-- Faster development time
-
-**MLX-LM over Ollama:**
-- Optimized for Apple Silicon (M1/M2/M3)
-- Direct model loading (no server needed)
-- Better control over generation
-- Faster inference on Mac
-
-**Agent-based RAG:**
-- LLM decides what data to retrieve
-- More flexible than fixed retrieval
-- Better handles complex queries
-- Iterative refinement possible
-
----
-
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Python 3.11+
-- macOS with Apple Silicon (M1/M2/M3) or compatible system
-- 16GB+ RAM recommended
-- 10GB+ free disk space
+- Python 3.9+
+- macOS (for MLX models) or any OS (for other options)
+- 8GB+ RAM recommended
 
 ### Installation
 
-1. **Clone the repository**
+1. **Clone the repository**:
 ```bash
 git clone <repository-url>
 cd gym-workout-rag-backend
 ```
 
-2. **Create virtual environment**
+2. **Create virtual environment**:
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. **Install dependencies**
+3. **Install dependencies**:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Set up environment variables**
+4. **Configure environment**:
 ```bash
 cp .env.example .env
-# Edit .env with your configuration
+# Edit .env with your preferred settings
 ```
 
-5. **Download the MLX model**
-
-The model will be automatically downloaded from LM Studio's cache:
-```
-~/.lmstudio/models/mlx-community/Qwen3.5-9B-MLX-4bit/
-```
-
-If not available, download via LM Studio or manually.
-
-### Running the Application
-
-1. **Start the FastAPI server**
+5. **Run the application**:
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+cd frontend
+python app.py
 ```
 
-2. **Access the API**
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-- Health Check: http://localhost:8000/health
+The application will:
+- Start FastAPI backend on port 8000
+- Fetch exercises from ExerciseDB (first run only)
+- Create embeddings and load into ChromaDB
+- Start Flask frontend on port 5000
 
-3. **Test the agent**
-```bash
-python test_agent_quick.py
-```
+Access the UI at: **http://localhost:5000**
 
-### First Run
-
-On first startup, the system will:
-1. Fetch all 1,500 exercises from ExerciseDB (~2-3 minutes)
-2. Generate embeddings for semantic search
-3. Store in ChromaDB vector database
-4. Load the MLX model into memory
-
-Subsequent startups are much faster (~5-10 seconds).
-
----
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 gym-workout-rag-backend/
-├── app/
-│   ├── __init__.py
-│   ├── main.py                      # FastAPI app
-│   ├── config.py                    # Configuration
-│   ├── models/
-│   │   ├── exercise.py              # Exercise models
-│   │   ├── user_profile.py          # User input models
-│   │   └── workout_plan.py          # Workout output models
-│   ├── services/
-│   │   ├── exercisedb_client.py     # ExerciseDB API client
-│   │   ├── vector_store.py          # ChromaDB operations
-│   │   ├── mlx_agent_service.py     # MLX agent implementation
-│   │   ├── database_tools.py        # Tools for agent
-│   │   ├── llm_service.py           # LLM wrapper
-│   │   └── rag_pipeline.py          # RAG orchestration
-│   ├── api/
-│   │   └── __init__.py
-│   ├── utils/
-│   │   └── __init__.py
-│   └── core/
-│       └── __init__.py
-├── data/
-│   └── chroma_db/                   # Vector database storage
-├── tests/
-│   ├── test_api.py
-│   ├── test_agent_quick.py
-│   └── test_pagination.py
-├── requirements.txt
-├── .env
-├── .env.example
-├── .gitignore
-└── README.md
+├── app/                          # FastAPI Backend
+│   ├── main.py                  # FastAPI application
+│   ├── config.py                # Configuration
+│   ├── models/                  # Pydantic models
+│   ├── services/                # Business logic
+│   │   ├── exercisedb_client.py # Exercise API client
+│   │   ├── vector_store.py      # ChromaDB interface
+│   │   ├── llm_service.py       # LLM integration
+│   │   ├── gguf_service.py      # GGUF model support
+│   │   ├── mlx_agent_service.py # MLX agent with tools
+│   │   └── rag_pipeline.py      # RAG orchestration
+│   └── utils/                   # Utilities
+│
+├── frontend/                     # Flask Frontend
+│   ├── app.py                   # Application factory
+│   ├── api/                     # API Blueprint
+│   │   └── routes.py           # API endpoints
+│   ├── utils/                   # Utilities
+│   │   └── server_manager.py   # Backend lifecycle
+│   ├── static/                  # Static assets
+│   │   ├── css/styles.css      # Modern CSS
+│   │   └── js/app.js           # ES6+ JavaScript
+│   └── templates/               # Jinja2 templates
+│       └── index.html          # Main SPA
+│
+├── docs/                        # Documentation
+│   ├── OMLX_SETUP.md           # OMLX setup guide
+│   └── FRONTEND_ARCHITECTURE.md # Frontend docs
+│
+├── data/                        # Data storage
+│   └── chroma_db/              # Vector database
+│
+├── .env.example                 # Environment template
+├── requirements.txt             # Python dependencies
+└── README.md                    # This file
 ```
 
----
+## 🎯 LLM Deployment Options
 
-## API Documentation
-
-### Generate Workout Plan
-
-**Endpoint:** `POST /api/v1/generate`
-
-**Request Body:**
-```json
-{
-  "height": 175,
-  "weight": 75,
-  "age": 28,
-  "gender": "male",
-  "fitness_level": "intermediate",
-  "gym_days_per_week": 4,
-  "workout_duration_minutes": 60,
-  "goals": ["muscle_gain", "strength"],
-  "available_equipment": ["barbell", "dumbbell", "cable"],
-  "injuries_limitations": [],
-  "preferred_split": "upper_lower"
-}
-```
-
-**Response:** `200 OK`
-```json
-{
-  "user_profile_summary": {...},
-  "plan_duration_weeks": 4,
-  "days_per_week": 4,
-  "workout_days": [...],
-  "progression_notes": "...",
-  "generated_at": "2026-05-10T14:00:00Z"
-}
-```
-
-### Health Check
-
-**Endpoint:** `GET /health`
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "vector_db_status": "ready",
-  "total_exercises": 1500
-}
-```
-
----
-
-## Technical Specifications
-
-### Vector Database
-
-**ChromaDB Configuration:**
-- Collection: `exercise_embeddings`
-- Embedding dimension: 384
-- Distance metric: Cosine similarity
-- Persistence: `./data/chroma_db`
-
-**Metadata Schema:**
-```python
-{
-  "exercise_id": "string",
-  "name": "string",
-  "target_muscles": "comma-separated",
-  "body_parts": "comma-separated",
-  "equipment": "comma-separated",
-  "gif_url": "string"
-}
-```
-
-### MLX Agent Service
-
-**Model:** Qwen3.5-9B-MLX-4bit
-- Parameters: 9 billion (4-bit quantized)
-- Context window: 32K tokens
-- Max tokens: 8000 (for complete workout plans)
-- Max iterations: 5
-- Max tool calls: 3
-
-**Agent Loop:**
-1. Receive user profile
-2. Generate thought about what to do
-3. Decide which tool to call (if any)
-4. Execute tool and observe result
-5. Repeat until final answer or max iterations
-
-### ExerciseDB Integration
-
-**API:** https://oss.exercisedb.dev/api/v1/exercises
-
-**Features:**
-- Cursor-based pagination (150 pages, 10 exercises each)
-- Exponential backoff retry (handles 429 rate limits)
-- 1-second inter-request delay
-- Automatic retry on failure (max 3 attempts)
-
-**Data Structure:**
-```json
-{
-  "id": "0001",
-  "name": "barbell bench press",
-  "gifUrl": "https://...",
-  "targetMuscles": ["pectorals"],
-  "bodyParts": ["chest"],
-  "equipments": ["barbell"],
-  "secondaryMuscles": ["triceps", "shoulders"],
-  "instructions": ["Step 1...", "Step 2..."]
-}
-```
-
-### Performance Metrics
-
-- **Vector Search**: 50-100ms for 1,500 exercises
-- **LLM Generation**: 10-30 seconds (depends on complexity)
-- **Total Response Time**: 15-40 seconds
-- **Memory Usage**: ~4-6GB (including model)
-- **Concurrent Requests**: 5-10 (limited by model memory)
-
----
-
-## Development Guide
-
-### Adding New Tools
-
-To add a new tool for the agent:
-
-1. **Define the tool in `database_tools.py`:**
-```python
-def get_exercises_by_difficulty(difficulty: str, n_results: int = 10) -> str:
-    """Get exercises filtered by difficulty level."""
-    # Implementation
-    return json.dumps(results)
-```
-
-2. **Register in tool list:**
-```python
-TOOLS = [
-    {
-        "name": "get_exercises_by_difficulty",
-        "description": "Get exercises filtered by difficulty",
-        "parameters": {
-            "difficulty": "beginner|intermediate|advanced",
-            "n_results": "number of results (default: 10)"
-        }
-    }
-]
-```
-
-3. **Agent will automatically discover and use it!**
-
-### Testing
+### 1. MLX Local Models (Default) 🍎
+**Best for**: Mac users, agent mode with tool calling
 
 ```bash
-# Run all tests
-pytest
-
-# Run specific test
-pytest tests/test_agent_quick.py
-
-# Run with coverage
-pytest --cov=app tests/
+# .env configuration
+USE_MLX=true
+MLX_MODEL_PATH=/path/to/mlx-community/Qwen3.5-4B-MLX-4bit
 ```
 
-### Debugging
+**Pros**: Free, private, agent capabilities  
+**Cons**: Mac only, slower than cloud APIs
 
-Enable debug logging in `.env`:
-```env
-LOG_LEVEL=DEBUG
+### 2. OMLX Server 🚀
+**Best for**: Mac users wanting OpenAI-compatible API
+
+```bash
+# Install and run
+pip install omlx
+omlx serve --model mlx-community/Qwen3.5-4B-MLX-4bit --port 8000
+
+# .env configuration
+USE_MLX=false
+LLM_BASE_URL=http://127.0.0.1:8000/v1
 ```
 
-View agent reasoning:
-```python
-# In test_agent_quick.py
-print(agent_output)  # Shows full agent loop
+See [`docs/OMLX_SETUP.md`](docs/OMLX_SETUP.md) for details.
+
+### 3. GGUF Models 💻
+**Best for**: Cross-platform compatibility
+
+```bash
+# .env configuration
+USE_GGUF=true
+GGUF_MODEL_PATH=/path/to/model.gguf
+GGUF_N_CTX=4096
+GGUF_N_GPU_LAYERS=0
 ```
 
----
+### 4. Local Servers (LM Studio/OLLAMA) 🖥️
+**Best for**: Easy local deployment
 
-## Deployment
-
-### Docker Deployment
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application
-COPY app/ ./app/
-COPY data/ ./data/
-
-EXPOSE 8000
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```bash
+# .env configuration
+USE_MLX=false
+LLM_BASE_URL=http://127.0.0.1:1234/v1
 ```
+
+### 5. Public APIs (OpenAI/Anthropic/Groq) ☁️
+**Best for**: Best quality, fastest inference
+
+```bash
+# .env configuration
+USE_MLX=false
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4o-mini
+LLM_API_KEY=sk-...
+```
+
+## 🎨 Frontend Features
+
+- **Modern UI**: Beautiful gradient design with smooth animations
+- **Responsive**: Works on desktop, tablet, and mobile
+- **Two-step Workflow**: Model selection → Workout form
+- **Real-time Validation**: Client and server-side validation
+- **Error Handling**: Clear error messages and recovery
+- **Loading States**: Progress indicators during generation
+
+See [`frontend/README.md`](frontend/README.md) for details.
+
+## 🔧 Configuration
 
 ### Environment Variables
 
-```env
-# API Configuration
-API_HOST=0.0.0.0
-API_PORT=8000
+Key configuration options in `.env`:
 
-# ExerciseDB
-EXERCISEDB_API_URL=https://oss.exercisedb.dev/api/v1/exercises
+```bash
+# LLM Configuration
+USE_MLX=true                    # Use MLX models
+USE_GGUF=false                  # Use GGUF models
+LLM_BASE_URL=http://...         # LLM server URL
+LLM_MODEL=gpt-4o-mini          # Model name
+LLM_API_KEY=                    # API key (if needed)
+LLM_MAX_TOKENS=32000           # Max tokens (for reasoning)
 
-# Vector Database
-CHROMA_DB_PATH=./data/chroma_db
-EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+# MLX Configuration
+MLX_MODEL_PATH=/path/to/model
 
-# MLX Model
-MLX_MODEL_PATH=~/.lmstudio/models/mlx-community/Qwen3.5-9B-MLX-4bit/
+# GGUF Configuration
+GGUF_MODEL_PATH=/path/to/model.gguf
+GGUF_N_CTX=4096
+GGUF_N_GPU_LAYERS=0
 
-# Logging
-LOG_LEVEL=INFO
+# ExerciseDB API
+EXERCISEDB_API_KEY=your_key_here
 ```
 
-### Production Checklist
+## 📊 API Endpoints
 
-- [ ] Set up environment variables
-- [ ] Initialize vector database
-- [ ] Configure logging and monitoring
-- [ ] Set up health check endpoints
-- [ ] Test API endpoints
-- [ ] Load test with concurrent requests
-- [ ] Set up backup strategy for vector DB
-- [ ] Configure rate limiting
-- [ ] Set up error tracking (Sentry, etc.)
+### FastAPI Backend (Port 8000)
 
----
+- `POST /api/v1/generate` - Generate workout plan
+- `GET /health` - Health check with vector DB status
 
-## Performance
+### Flask Frontend (Port 5000)
 
-### Optimization Strategies
+- `GET /` - Main application page
+- `POST /api/generate` - Proxy to backend
+- `GET /api/health` - Combined health check
 
-1. **Vector Database Caching**
-   - Persistent storage (no re-indexing on restart)
-   - In-memory embeddings for fast search
+## 🧪 Development
 
-2. **Batch Processing**
-   - Batch size: 32 for embedding generation
-   - Parallel API calls where possible
+### Running Backend Only
 
-3. **Rate Limiting**
-   - ExerciseDB: 1-second delays between requests
-   - Exponential backoff for 429 errors
+```bash
+python -m uvicorn app.main:app --reload
+```
 
-4. **Model Optimization**
-   - 4-bit quantization (reduces memory by 75%)
-   - MLX optimizations for Apple Silicon
-   - Reduced max iterations (5) and tool calls (3)
+### Running Frontend Only
 
-### Benchmarks
+```bash
+cd frontend
+python app.py
+```
 
-**Hardware:** MacBook Pro M2, 16GB RAM
+### Project Dependencies
 
-- Vector search (1,500 exercises): ~80ms
-- Embedding generation (1 exercise): ~5ms
-- LLM generation (workout plan): ~20s
-- Total end-to-end: ~25s
+- **FastAPI**: Backend API framework
+- **Flask**: Frontend web framework
+- **ChromaDB**: Vector database
+- **sentence-transformers**: Embeddings
+- **mlx-lm**: MLX model support (Mac only)
+- **llama-cpp-python**: GGUF model support
+- **openai**: OpenAI API client
+- **httpx**: HTTP client
 
----
+## 📝 Usage Example
 
-## Contributing
+1. **Start the application**:
+```bash
+cd frontend
+python app.py
+```
 
-### Development Setup
+2. **Open browser**: http://localhost:5000
+
+3. **Select AI model** (Step 1):
+   - Choose your preferred model type
+   - Configure model settings (informational)
+
+4. **Fill profile** (Step 2):
+   - Height, weight, age, gender
+   - Fitness level, goals
+   - Available equipment
+   - Days per week, session duration
+
+5. **Generate workout**:
+   - Click "Generate Workout Plan"
+   - Wait 30-60 seconds
+   - View personalized workout plan
+
+## 🐛 Troubleshooting
+
+### Backend won't start
+```bash
+# Check if port 8000 is available
+lsof -i :8000
+kill -9 <PID>
+```
+
+### Frontend connection error
+```bash
+# Verify backend is running
+curl http://localhost:8000/health
+```
+
+### Slow generation
+- Use smaller model (e.g., 4B instead of 9B)
+- Try LM Studio or public APIs
+- Increase timeout in frontend
+
+### Vector DB issues
+```bash
+# Clear and rebuild
+rm -rf data/chroma_db/
+# Restart application (will refetch exercises)
+```
+
+## 📚 Documentation
+
+- [`frontend/README.md`](frontend/README.md) - Frontend documentation
+- [`docs/FRONTEND_ARCHITECTURE.md`](docs/FRONTEND_ARCHITECTURE.md) - Architecture details
+- [`docs/OMLX_SETUP.md`](docs/OMLX_SETUP.md) - OMLX setup guide
+- [`.env.example`](.env.example) - Configuration reference
+
+## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Write tests
-5. Submit a pull request
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
 
-### Code Style
+## 📄 License
 
-- Follow PEP 8
-- Use type hints
-- Write docstrings
-- Add tests for new features
+This project is licensed under the MIT License.
 
-### Commit Messages
+## 🙏 Acknowledgments
 
-```
-feat: Add new exercise filtering tool
-fix: Handle rate limiting in ExerciseDB client
-docs: Update README with deployment guide
-test: Add tests for agent service
-```
+- **ExerciseDB**: Exercise data API
+- **ChromaDB**: Vector database
+- **MLX**: Apple Silicon ML framework
+- **OpenAI**: API and models
+- **Anthropic**: Claude models
+- **Groq**: Fast inference
 
 ---
 
-## License
-
-MIT License - see LICENSE file for details
-
----
-
-## Support
-
-For questions or issues:
-1. Check the documentation
-2. Search existing issues
-3. Create a new issue with details
-
----
-
-## Acknowledgments
-
-- **ExerciseDB** - Exercise database API
-- **ChromaDB** - Vector database
-- **MLX** - Apple Silicon ML framework
-- **Qwen Team** - Qwen3.5 model
-- **Sentence Transformers** - Embedding models
-
----
-
-**Status:** ✅ Production Ready
-**Version:** 1.1.0
-**Last Updated:** 2026-05-15
-
----
-
-## Changelog
-
-### Version 1.1.0 (2026-05-15)
-
-#### 🔒 Security Improvements
-- **Input Validation**: Added comprehensive validation for all tool arguments
-  - Query strings sanitized (max 500 chars, control character removal)
-  - Exercise IDs validated (alphanumeric with hyphens/underscores only)
-  - `n_results` bounds checking (1-100)
-  - Equipment list validation and normalization
-- **PII Protection**: Implemented sanitized logging that redacts sensitive user data
-- **API Key Management**: Moved hardcoded credentials to environment variables
-- **Enhanced .gitignore**: Added patterns for sensitive files (`.env.*`, `*.bak`, debug logs)
-
-#### 🐛 Bug Fixes
-- **Error Handling**: Improved JSON parsing with better error messages and debug file saving
-- **Empty Results**: Enhanced error messages with actionable debugging information
-- **Memory Management**: Added conversation history size limits (30K chars) to prevent unbounded growth
-- **Model Validation**: Added validation after MLX model loading to ensure components are usable
-
-#### ⚡ Performance Enhancements
-- **Database-Level Filtering**: Replaced post-processing with ChromaDB metadata filtering (50% faster)
-- **Query Caching**: Implemented embedding cache for repeated queries (100 entry LRU cache)
-- **Reduced Data Transfer**: Equipment filtering now happens at database level
-
-#### 🏗️ Code Quality
-- **DRY Improvements**: Consolidated duplicate JSON parsing logic into shared utility (`app/utils/json_parser.py`)
-- **New Utilities Module**: Added `app/utils/validators.py` for input validation
-- **Constants**: Extracted magic numbers to named class constants
-- **Better Documentation**: Enhanced docstrings with examples and clearer explanations
-- **Variable Naming**: Improved clarity (renamed `ex` to `exercise` in loops)
-
-#### 📝 Documentation
-- Added detailed TODO comments for future warm-up/cool-down implementation
-- Documented thread-safety considerations for vector store initialization
-- Added migration guide for developers
-
-#### 🔧 Configuration
-- New environment variable: `LM_STUDIO_API_KEY` (defaults to 'lm-studio' for local development)
-
-### Version 1.0.0 (2026-05-11)
-- Initial release with FastAPI backend
-- ChromaDB vector store integration
-- MLX-based LLM agent with database tools
-- ExerciseDB API integration with pagination
-- Personalized workout plan generation
+**Version**: 2.0.0  
+**Last Updated**: 2026-05-17  
+**Status**: Production Ready ✅

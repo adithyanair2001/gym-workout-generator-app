@@ -10,7 +10,9 @@ const AppState = {
     currentStep: 'model-selection',
     modelConfig: {},
     userProfile: {},
-    isGenerating: false
+    isGenerating: false,
+    modelValidated: false,
+    isValidating: false
 };
 
 // ============================================
@@ -111,6 +113,32 @@ const ModelConfig = {
         }
         
         return config;
+    },
+    
+    /**
+     * Validate model configuration
+     */
+    async validate() {
+        const config = this.getConfig();
+        
+        try {
+            const response = await fetch('/api/validate-model', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(config)
+            });
+            
+            const data = await response.json();
+            return data;
+            
+        } catch (error) {
+            return {
+                success: false,
+                message: `Validation error: ${error.message}`
+            };
+        }
     }
 };
 
@@ -119,16 +147,59 @@ const ModelConfig = {
 // ============================================
 const Navigation = {
     /**
-     * Proceed to workout form (Step 2)
+     * Proceed to workout form (Step 2) - with validation
      */
-    toWorkoutForm() {
-        AppState.currentStep = 'workout-form';
-        AppState.modelConfig = ModelConfig.getConfig();
+    async toWorkoutForm() {
+        // Check if model is already validated
+        if (AppState.modelValidated) {
+            this._proceedToForm();
+            return;
+        }
         
+        // Validate model first
+        const validateBtn = document.getElementById('validateModelBtn');
+        if (validateBtn) {
+            validateBtn.disabled = true;
+            validateBtn.textContent = '🔄 Validating Model...';
+        }
+        
+        AppState.isValidating = true;
+        
+        try {
+            const result = await ModelConfig.validate();
+            
+            if (result.success) {
+                AppState.modelValidated = true;
+                AppState.modelConfig = ModelConfig.getConfig();
+                
+                // Show success message briefly
+                UI.showModelValidationSuccess(result.message);
+                
+                // Proceed to form after short delay
+                setTimeout(() => {
+                    this._proceedToForm();
+                }, 1000);
+            } else {
+                UI.showModelValidationError(result.message, result.details);
+            }
+        } catch (error) {
+            UI.showModelValidationError(`Validation failed: ${error.message}`);
+        } finally {
+            AppState.isValidating = false;
+            if (validateBtn) {
+                validateBtn.disabled = false;
+                validateBtn.textContent = 'Test Connection & Continue →';
+            }
+        }
+    },
+    
+    /**
+     * Internal method to proceed to form
+     */
+    _proceedToForm() {
+        AppState.currentStep = 'workout-form';
         DOM.modelSelectionCard.style.display = 'none';
         DOM.workoutFormCard.style.display = 'block';
-        
-        // Smooth scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
     },
     
@@ -137,6 +208,7 @@ const Navigation = {
      */
     toModelSelection() {
         AppState.currentStep = 'model-selection';
+        AppState.modelValidated = false;  // Reset validation
         
         DOM.workoutFormCard.style.display = 'none';
         DOM.modelSelectionCard.style.display = 'block';
@@ -232,6 +304,40 @@ const API = {
 // UI Rendering
 // ============================================
 const UI = {
+    /**
+     * Show model validation success
+     */
+    showModelValidationSuccess(message) {
+        const outputArea = document.getElementById('modelValidationOutput');
+        if (outputArea) {
+            outputArea.innerHTML = `
+                <div class="alert alert-success">
+                    <strong>✅ Success:</strong> ${this.escapeHtml(message)}
+                </div>
+            `;
+        }
+    },
+    
+    /**
+     * Show model validation error
+     */
+    showModelValidationError(message, details = null) {
+        const outputArea = document.getElementById('modelValidationOutput');
+        if (outputArea) {
+            let html = `
+                <div class="alert alert-error">
+                    <strong>❌ Validation Failed:</strong> ${this.escapeHtml(message)}
+            `;
+            
+            if (details && details.hint) {
+                html += `<br><br><strong>💡 Hint:</strong> ${this.escapeHtml(details.hint)}`;
+            }
+            
+            html += '</div>';
+            outputArea.innerHTML = html;
+        }
+    },
+    
     /**
      * Show loading state
      */
