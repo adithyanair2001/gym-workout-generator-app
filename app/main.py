@@ -12,6 +12,7 @@ from app.models.workout_plan import WorkoutPlan
 from app.services.exercisedb_client import ExerciseDBClient
 from app.services.vector_store import VectorStoreService
 from app.services.llm_service import LLMService
+from app.services.gguf_service import GGUFService
 from app.services.mlx_agent_service import MLXAgentService
 from app.services.database_tools import DatabaseTools
 from app.services.rag_pipeline import RAGPipeline
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 exercise_client = None
 vector_store = None
 llm_service = None
+gguf_service = None
 mlx_agent = None
 database_tools = None
 rag_pipeline = None
@@ -35,7 +37,7 @@ rag_pipeline = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown events."""
-    global exercise_client, vector_store, llm_service, mlx_agent, database_tools, rag_pipeline
+    global exercise_client, vector_store, llm_service, gguf_service, mlx_agent, database_tools, rag_pipeline
     
     settings = get_settings()
     
@@ -86,7 +88,7 @@ async def lifespan(app: FastAPI):
         # Initialize LLM service based on configuration
         if settings.use_mlx:
             logger.info("=" * 60)
-            logger.info("Using MLX local model (no LM Studio required)")
+            logger.info("Using MLX local model (agent mode)")
             logger.info(f"Model: {settings.mlx_model_path}")
             logger.info("=" * 60)
             
@@ -105,20 +107,51 @@ async def lifespan(app: FastAPI):
             )
             logger.info("MLX agent service initialized")
             
-            # For MLX, we don't use the traditional RAG pipeline
+            # For MLX agent, we don't use RAG pipeline
             rag_pipeline = None
+            llm_service = None
+            gguf_service = None
+        elif settings.use_gguf:
+            logger.info("=" * 60)
+            logger.info("Using GGUF model with LangChain")
+            logger.info(f"Model: {settings.gguf_model_path}")
+            logger.info(f"Context: {settings.gguf_n_ctx}, GPU layers: {settings.gguf_n_gpu_layers}")
+            logger.info("=" * 60)
+            
+            # Initialize GGUF service
+            logger.info("Initializing GGUF service...")
+            gguf_service = GGUFService(
+                model_path=settings.gguf_model_path,
+                n_ctx=settings.gguf_n_ctx,
+                n_gpu_layers=settings.gguf_n_gpu_layers,
+                temperature=settings.llm_temperature,
+                max_tokens=settings.llm_max_tokens
+            )
+            logger.info("GGUF service initialized")
+            
+            # Initialize RAG pipeline with GGUF
+            logger.info("Initializing RAG pipeline...")
+            rag_pipeline = RAGPipeline(vector_store, gguf_service)
+            logger.info("RAG pipeline initialized")
+            
+            mlx_agent = None
+            database_tools = None
             llm_service = None
         else:
             logger.info("=" * 60)
-            logger.info("Using LM Studio (OpenAI-compatible API)")
+            logger.info("Using external LLM API")
             logger.info(f"URL: {settings.llm_base_url}")
+            logger.info(f"Model: {settings.llm_model}")
+            if settings.llm_api_key:
+                logger.info("API key: Configured ✓")
             logger.info("=" * 60)
             
-            # Initialize LLM service (connection will be tested when first used)
+            # Initialize LLM service with API key
             logger.info("Initializing LLM service...")
             llm_service = LLMService(
                 base_url=settings.llm_base_url,
                 model=settings.llm_model,
+                api_key=settings.llm_api_key,
                 temperature=settings.llm_temperature,
                 max_tokens=settings.llm_max_tokens
             )
@@ -131,6 +164,7 @@ async def lifespan(app: FastAPI):
             
             mlx_agent = None
             database_tools = None
+            gguf_service = None
         
         logger.info("=" * 60)
         logger.info("Application startup complete!")
@@ -152,13 +186,9 @@ async def lifespan(app: FastAPI):
         await exercise_client.close()
         logger.info("✓ Exercise client closed")
     
-    # Delete vector database
-    if os.path.exists(settings.chroma_db_path):
-        try:
-            shutil.rmtree(settings.chroma_db_path)
-            logger.info(f"✓ Deleted vector database: {settings.chroma_db_path}")
-        except Exception as e:
-            logger.error(f"Failed to delete vector database: {e}")
+    # Vector database is preserved for next startup
+    logger.info(f"✓ Vector database preserved at: {settings.chroma_db_path}")
+    logger.info(f"  To rebuild database: rm -rf {settings.chroma_db_path}")
     
     logger.info("=" * 60)
     logger.info("Application shutdown complete")
@@ -205,21 +235,27 @@ async def health_check():
         settings = get_settings()
         vector_db_stats = vector_store.get_collection_stats() if vector_store else {"status": "not_initialized"}
         
-        # Check LLM/MLX status based on configuration
+        # Check LLM status based on configuration
         if settings.use_mlx:
-            llm_status = "mlx_agent_ready" if mlx_agent else "mlx_agent_not_initialized"
+            llm_mode = "mlx_agent"
+            llm_status = "ready" if mlx_agent else "not_initialized"
+        elif settings.use_gguf:
+            llm_mode = "gguf_langchain"
+            llm_status = "ready" if gguf_service else "not_initialized"
         else:
-            llm_status = "lm_studio_ready" if (llm_service and llm_service.test_connection()) else "lm_studio_not_connected"
+            llm_mode = "external_api"
+            llm_status = "ready" if (llm_service and llm_service.test_connection()) else "not_connected"
         
         return {
             "status": "healthy",
             "vector_db": vector_db_stats,
-            "llm_mode": "mlx" if settings.use_mlx else "lm_studio",
+            "llm_mode": llm_mode,
             "llm_status": llm_status,
             "services": {
                 "exercise_client": exercise_client is not None,
                 "vector_store": vector_store is not None,
                 "llm_service": llm_service is not None,
+                "gguf_service": gguf_service is not None,
                 "mlx_agent": mlx_agent is not None,
                 "rag_pipeline": rag_pipeline is not None
             }

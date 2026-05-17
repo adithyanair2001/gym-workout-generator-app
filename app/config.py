@@ -19,16 +19,29 @@ class Settings(BaseSettings):
     chroma_db_path: str = "./data/chroma_db"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     
-    # LLM Configuration
-    use_mlx: bool = True  # Use MLX local model instead of LM Studio
-    mlx_model_path: str = "/Users/adithyanair/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit"  # Path to MLX model (Qwen3.5 4B - newer, better performance)
+    # LLM Configuration - Multiple Options
+    # Option 1: Local MLX models (recommended for Mac)
+    use_mlx: bool = True
+    mlx_model_path: str = "/Users/adithyanair/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit"
     
-    # LM Studio Configuration (only used if use_mlx=False)
-    llm_base_url: str = "http://127.0.0.1:1234/v1"
+    # Option 2: Local GGUF models with LangChain
+    use_gguf: bool = False
+    gguf_model_path: str = ""
+    gguf_n_ctx: int = 4096  # Context window size
+    gguf_n_gpu_layers: int = 0  # Number of layers to offload to GPU (0 = CPU only)
+    
+    # Option 3 & 4: External LLM (Local servers or Public APIs)
+    # For local servers (LM Studio, OLLAMA): http://127.0.0.1:PORT/v1
+    # For OpenAI: https://api.openai.com/v1
+    # For Anthropic: https://api.anthropic.com/v1
+    # For Groq: https://api.groq.com/openai/v1
+    llm_base_url: str = "http://127.0.0.1:8001/v1"
     llm_model: str = "local-model"
+    llm_api_key: str = ""  # API key for public LLM services (OpenAI, Anthropic, Groq, etc.)
+    
+    # Common LLM Parameters
     llm_temperature: float = 0.7
-    llm_max_tokens: int = 16430  # Optimized for Llama-3.2-3B context window
-    lm_studio_api_key: str = "lm-studio"  # API key for LM Studio (default for local)
+    llm_max_tokens: int = 32000
     
     # Logging
     log_level: str = "INFO"

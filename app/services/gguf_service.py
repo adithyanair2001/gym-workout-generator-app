@@ -1,9 +1,6 @@
-"""LLM service for workout plan generation using LM Studio (OpenAI-compatible API)."""
-import os
+"""GGUF model service using LangChain and llama-cpp-python."""
 import logging
 from typing import Dict, List, Optional
-
-from openai import OpenAI
 
 from app.models.user_profile import UserProfile
 from app.utils.json_parser import parse_llm_json_response
@@ -11,59 +8,61 @@ from app.utils.json_parser import parse_llm_json_response
 logger = logging.getLogger(__name__)
 
 
-class LLMService:
-    """Service for interacting with LLMs via OpenAI-compatible API.
+class GGUFService:
+    """Service for interacting with GGUF models via LangChain.
     
-    Supports:
-    - Local servers (LM Studio, OLLAMA)
-    - Public APIs (OpenAI, Anthropic, Groq, etc.)
+    Requires: pip install langchain langchain-community llama-cpp-python
     """
     
-    def __init__(self, base_url: str, model: str, api_key: str = "", temperature: float = 0.7, max_tokens: int = 2000):
-        """Initialize the LLM service.
+    def __init__(
+        self,
+        model_path: str,
+        n_ctx: int = 4096,
+        n_gpu_layers: int = 0,
+        temperature: float = 0.7,
+        max_tokens: int = 2000
+    ):
+        """Initialize the GGUF service.
         
         Args:
-            base_url: Server base URL
-                - Local: 'http://127.0.0.1:1234/v1' (LM Studio)
-                - OpenAI: 'https://api.openai.com/v1'
-                - Anthropic: 'https://api.anthropic.com/v1'
-                - Groq: 'https://api.groq.com/openai/v1'
-            model: Model name
-                - Local: 'local-model'
-                - OpenAI: 'gpt-4o-mini', 'gpt-4o', etc.
-                - Anthropic: 'claude-3-5-sonnet-20241022', etc.
-                - Groq: 'llama-3.3-70b-versatile', etc.
-            api_key: API key for public services (optional for local servers)
+            model_path: Path to GGUF model file
+            n_ctx: Context window size
+            n_gpu_layers: Number of layers to offload to GPU (0 = CPU only)
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
         """
-        self.base_url = base_url
-        self.model = model
+        try:
+            from langchain_community.llms import LlamaCpp
+            from langchain.callbacks.manager import CallbackManager
+            from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+        except ImportError:
+            raise ImportError(
+                "GGUF support requires additional packages. Install with:\n"
+                "pip install langchain langchain-community llama-cpp-python"
+            )
+        
+        self.model_path = model_path
         self.temperature = temperature
         self.max_tokens = max_tokens
         
-        # Determine if this is a local or public API
-        is_local = base_url.startswith('http://127.0.0.1') or base_url.startswith('http://localhost')
+        logger.info(f"Initializing GGUF model from {model_path}")
+        logger.info(f"Context window: {n_ctx}, GPU layers: {n_gpu_layers}")
         
-        # Use provided API key, or fallback to environment variable, or default for local
-        if api_key:
-            final_api_key = api_key
-        elif not is_local:
-            # For public APIs, try to get from environment
-            final_api_key = os.getenv('LLM_API_KEY', '')
-            if not final_api_key:
-                logger.warning("No API key provided for public LLM service. This may cause authentication errors.")
-        else:
-            # For local servers, use default
-            final_api_key = os.getenv('LM_STUDIO_API_KEY', 'lm-studio')
+        # Initialize callback manager for streaming
+        callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
         
-        self.client = OpenAI(base_url=base_url, api_key=final_api_key)
+        # Initialize LlamaCpp
+        self.llm = LlamaCpp(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            callback_manager=callback_manager,
+            verbose=False,
+        )
         
-        # Log initialization
-        service_type = "local server" if is_local else "public API"
-        logger.info(f"LLM service initialized with {service_type} at {base_url}, model: {model}")
-        if not is_local and api_key:
-            logger.info("Using provided API key for authentication")
+        logger.info("GGUF model initialized successfully")
     
     def construct_prompt(
         self,
@@ -165,11 +164,8 @@ Generate the complete workout plan as valid JSON. Remember: ONLY use exercises f
         
         return prompt
     
-    async def generate_workout_plan(
-        self,
-        prompt: str
-    ) -> Dict:
-        """Generate workout plan using LLM.
+    async def generate_workout_plan(self, prompt: str) -> Dict:
+        """Generate workout plan using GGUF model.
         
         Args:
             prompt: Formatted prompt for the LLM
@@ -181,38 +177,22 @@ Generate the complete workout plan as valid JSON. Remember: ONLY use exercises f
             Exception: If generation fails
         """
         try:
-            logger.info(f"Generating workout plan with {self.model}...")
+            logger.info(f"Generating workout plan with GGUF model...")
             
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are an expert personal trainer AI assistant. You MUST respond with ONLY valid JSON, no additional text, explanations, or markdown formatting. DO NOT include reasoning or thinking process - output the JSON directly."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens
-            )
+            # Generate response
+            response = self.llm.invoke(prompt)
             
-            message = response.choices[0].message
-            generated_text = message.content
-            
-            # Check if model used reasoning tokens (Qwen models)
-            if hasattr(message, 'reasoning_content') and message.reasoning_content:
-                logger.warning(f"Model used {len(message.reasoning_content)} chars for reasoning - this wastes tokens!")
-                logger.info(f"Reasoning content: {message.reasoning_content[:500]}...")
-            
-            if generated_text:
-                logger.info(f"Generated response length: {len(generated_text)} characters")
-                logger.info(f"Full generated response:\n{generated_text}")
+            if response:
+                logger.info(f"Generated response length: {len(response)} characters")
+                logger.info(f"Full generated response:\n{response}")
                 
                 # Parse JSON from response
-                workout_plan = self.parse_json_response(generated_text)
+                workout_plan = self.parse_json_response(response)
                 
                 return workout_plan
             else:
-                logger.error("Model returned empty/null response (content field is empty)")
-                logger.error("This usually means the model spent all tokens on reasoning and didn't generate output")
-                raise ValueError("Empty response from model - try increasing max_tokens or disabling reasoning mode in LM Studio")
+                logger.error("Model returned empty response")
+                raise ValueError("Empty response from GGUF model")
             
         except Exception as e:
             logger.error(f"Error generating workout plan: {e}")
@@ -231,19 +211,6 @@ Generate the complete workout plan as valid JSON. Remember: ONLY use exercises f
             ValueError: If JSON parsing fails
         """
         return parse_llm_json_response(response, save_on_error=True)
-    
-    def test_connection(self) -> bool:
-        """Test connection to LM Studio server.
-        
-        Returns:
-            True if connection successful, False otherwise
-        """
-        try:
-            models = self.client.models.list()
-            logger.info(f"Successfully connected to LM Studio. Available models: {len(models.data)}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to connect to LM Studio: {e}")
-            return False
+
 
 # Made with Bob

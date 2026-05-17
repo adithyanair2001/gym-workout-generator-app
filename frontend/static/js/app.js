@@ -1,0 +1,444 @@
+/**
+ * Gym Workout RAG - Frontend Application
+ * Modern JavaScript with ES6+ features
+ */
+
+// ============================================
+// State Management
+// ============================================
+const AppState = {
+    currentStep: 'model-selection',
+    modelConfig: {},
+    userProfile: {},
+    isGenerating: false
+};
+
+// ============================================
+// DOM Elements Cache
+// ============================================
+const DOM = {
+    modelSelectionCard: null,
+    workoutFormCard: null,
+    outputArea: null,
+    generateBtn: null,
+    workoutForm: null,
+    
+    init() {
+        this.modelSelectionCard = document.getElementById('modelSelectionCard');
+        this.workoutFormCard = document.getElementById('workoutFormCard');
+        this.outputArea = document.getElementById('outputArea');
+        this.generateBtn = document.getElementById('generateBtn');
+        this.workoutForm = document.getElementById('workoutForm');
+    }
+};
+
+// ============================================
+// Model Configuration
+// ============================================
+const ModelConfig = {
+    /**
+     * Update visible model options based on selected type
+     */
+    updateOptions() {
+        const modelType = document.getElementById('modelType').value;
+        
+        // Hide all options
+        document.querySelectorAll('.model-options').forEach(el => {
+            el.style.display = 'none';
+        });
+        
+        // Show selected option
+        const optionsMap = {
+            'mlx': 'mlxOptions',
+            'omlx': 'omlxOptions',
+            'gguf': 'ggufOptions',
+            'local_server': 'localServerOptions',
+            'openai': 'openaiOptions',
+            'anthropic': 'anthropicOptions',
+            'groq': 'groqOptions'
+        };
+        
+        const optionsId = optionsMap[modelType];
+        if (optionsId) {
+            document.getElementById(optionsId).style.display = 'block';
+        }
+    },
+    
+    /**
+     * Collect current model configuration
+     */
+    getConfig() {
+        const modelType = document.getElementById('modelType').value;
+        const config = { model_type: modelType };
+        
+        switch(modelType) {
+            case 'mlx':
+                config.mlx_model_path = document.getElementById('mlxModelPath').value;
+                break;
+                
+            case 'omlx':
+                config.llm_base_url = document.getElementById('omlxServerUrl').value;
+                config.llm_model = document.getElementById('omlxModel').value;
+                break;
+                
+            case 'gguf':
+                config.gguf_model_path = document.getElementById('ggufModelPath').value;
+                config.gguf_n_ctx = parseInt(document.getElementById('ggufContext').value);
+                config.gguf_n_gpu_layers = parseInt(document.getElementById('ggufGpuLayers').value);
+                break;
+                
+            case 'local_server':
+                config.llm_base_url = document.getElementById('localServerUrl').value;
+                break;
+                
+            case 'openai':
+                config.llm_base_url = 'https://api.openai.com/v1';
+                config.llm_model = document.getElementById('openaiModel').value;
+                config.llm_api_key = document.getElementById('openaiApiKey').value;
+                break;
+                
+            case 'anthropic':
+                config.llm_base_url = 'https://api.anthropic.com/v1';
+                config.llm_model = document.getElementById('anthropicModel').value;
+                config.llm_api_key = document.getElementById('anthropicApiKey').value;
+                break;
+                
+            case 'groq':
+                config.llm_base_url = 'https://api.groq.com/openai/v1';
+                config.llm_model = document.getElementById('groqModel').value;
+                config.llm_api_key = document.getElementById('groqApiKey').value;
+                break;
+        }
+        
+        return config;
+    }
+};
+
+// ============================================
+// Navigation
+// ============================================
+const Navigation = {
+    /**
+     * Proceed to workout form (Step 2)
+     */
+    toWorkoutForm() {
+        AppState.currentStep = 'workout-form';
+        AppState.modelConfig = ModelConfig.getConfig();
+        
+        DOM.modelSelectionCard.style.display = 'none';
+        DOM.workoutFormCard.style.display = 'block';
+        
+        // Smooth scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    
+    /**
+     * Go back to model selection (Step 1)
+     */
+    toModelSelection() {
+        AppState.currentStep = 'model-selection';
+        
+        DOM.workoutFormCard.style.display = 'none';
+        DOM.modelSelectionCard.style.display = 'block';
+        
+        // Smooth scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+};
+
+// ============================================
+// Form Handling
+// ============================================
+const FormHandler = {
+    /**
+     * Collect form data
+     */
+    collectFormData() {
+        return {
+            model_config: AppState.modelConfig,
+            height: document.getElementById('height').value,
+            weight: document.getElementById('weight').value,
+            age: document.getElementById('age').value,
+            gender: document.getElementById('gender').value,
+            fitness_level: document.getElementById('fitness_level').value,
+            days_per_week: document.getElementById('days_per_week').value,
+            session_duration: document.getElementById('session_duration').value,
+            goals: [document.getElementById('goals').value],
+            equipment: document.getElementById('equipment').value,
+            injuries: document.getElementById('injuries').value,
+            preferred_split: document.getElementById('preferred_split').value
+        };
+    },
+    
+    /**
+     * Validate form data
+     */
+    validate(data) {
+        const errors = [];
+        
+        if (data.height < 100 || data.height > 250) {
+            errors.push('Height must be between 100-250 cm');
+        }
+        
+        if (data.weight < 30 || data.weight > 200) {
+            errors.push('Weight must be between 30-200 kg');
+        }
+        
+        if (data.age < 13 || data.age > 100) {
+            errors.push('Age must be between 13-100 years');
+        }
+        
+        if (data.days_per_week < 1 || data.days_per_week > 7) {
+            errors.push('Days per week must be between 1-7');
+        }
+        
+        if (data.session_duration < 30 || data.session_duration > 180) {
+            errors.push('Session duration must be between 30-180 minutes');
+        }
+        
+        if (!data.equipment || data.equipment.trim() === '') {
+            errors.push('Please specify available equipment');
+        }
+        
+        return errors;
+    }
+};
+
+// ============================================
+// API Communication
+// ============================================
+const API = {
+    /**
+     * Generate workout plan
+     */
+    async generateWorkout(formData) {
+        const response = await fetch('/api/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        return await response.json();
+    }
+};
+
+// ============================================
+// UI Rendering
+// ============================================
+const UI = {
+    /**
+     * Show loading state
+     */
+    showLoading() {
+        DOM.outputArea.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Generating your personalized workout plan...</p>
+                <p style="color: var(--text-tertiary); font-size: 0.95em;">This may take 30-60 seconds</p>
+            </div>
+        `;
+    },
+    
+    /**
+     * Show error message
+     */
+    showError(message) {
+        DOM.outputArea.innerHTML = `
+            <div class="alert alert-error">
+                <strong>❌ Error:</strong> ${this.escapeHtml(message)}
+            </div>
+        `;
+    },
+    
+    /**
+     * Show validation errors
+     */
+    showValidationErrors(errors) {
+        const errorList = errors.map(err => `<li>${this.escapeHtml(err)}</li>`).join('');
+        DOM.outputArea.innerHTML = `
+            <div class="alert alert-error">
+                <strong>❌ Validation Errors:</strong>
+                <ul style="margin-top: 10px; margin-left: 20px;">
+                    ${errorList}
+                </ul>
+            </div>
+        `;
+    },
+    
+    /**
+     * Display workout plan
+     */
+    displayWorkoutPlan(plan) {
+        let html = '<div class="workout-plan">';
+        html += `<h3>${plan.days_per_week}-Day Workout Plan</h3>`;
+        html += `<p>${plan.plan_duration_weeks} weeks program</p>`;
+        
+        plan.workout_days.forEach(day => {
+            html += `
+                <div class="workout-day">
+                    <h3>${this.escapeHtml(day.day_name)}</h3>
+                    <p><strong>Focus:</strong> ${this.escapeHtml(day.focus)}</p>
+                    <p><strong>Duration:</strong> ~${day.estimated_duration_minutes} minutes</p>
+                    
+                    <h4>Main Workout:</h4>
+            `;
+            
+            day.main_workout.forEach(exercise => {
+                const targetMuscles = exercise.target_muscles.map(m => this.escapeHtml(m)).join(', ');
+                html += `
+                    <div class="exercise">
+                        <div class="exercise-name">${this.escapeHtml(exercise.name)}</div>
+                        <div class="exercise-details">
+                            <span>📊 ${exercise.sets} sets × ${exercise.reps} reps</span>
+                            <span>⏱️ Rest: ${exercise.rest_seconds}s</span>
+                            <span>🎯 ${targetMuscles}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+        });
+        
+        if (plan.progression_notes) {
+            html += `
+                <div class="alert alert-success" style="margin-top: 25px;">
+                    <strong>📈 Progression Notes:</strong><br>
+                    ${this.escapeHtml(plan.progression_notes)}
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        DOM.outputArea.innerHTML = html;
+    },
+    
+    /**
+     * Escape HTML to prevent XSS
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+};
+
+// ============================================
+// Main Application Logic
+// ============================================
+const App = {
+    /**
+     * Initialize application
+     */
+    init() {
+        console.log('🏋️ Gym Workout RAG - Initializing...');
+        
+        // Cache DOM elements
+        DOM.init();
+        
+        // Set up event listeners
+        this.setupEventListeners();
+        
+        // Initialize model options
+        ModelConfig.updateOptions();
+        
+        console.log('✅ Application initialized successfully');
+    },
+    
+    /**
+     * Set up event listeners
+     */
+    setupEventListeners() {
+        // Model type change
+        const modelTypeSelect = document.getElementById('modelType');
+        if (modelTypeSelect) {
+            modelTypeSelect.addEventListener('change', () => ModelConfig.updateOptions());
+        }
+        
+        // Form submission
+        if (DOM.workoutForm) {
+            DOM.workoutForm.addEventListener('submit', (e) => this.handleFormSubmit(e));
+        }
+    },
+    
+    /**
+     * Handle form submission
+     */
+    async handleFormSubmit(event) {
+        event.preventDefault();
+        
+        if (AppState.isGenerating) {
+            console.log('⚠️ Generation already in progress');
+            return;
+        }
+        
+        try {
+            AppState.isGenerating = true;
+            DOM.generateBtn.disabled = true;
+            
+            // Collect and validate form data
+            const formData = FormHandler.collectFormData();
+            const validationErrors = FormHandler.validate(formData);
+            
+            if (validationErrors.length > 0) {
+                UI.showValidationErrors(validationErrors);
+                return;
+            }
+            
+            // Show loading state
+            UI.showLoading();
+            
+            // Call API
+            console.log('📤 Sending request to API...');
+            const response = await API.generateWorkout(formData);
+            
+            // Handle response
+            if (response.success) {
+                console.log('✅ Workout plan generated successfully');
+                UI.displayWorkoutPlan(response.workout_plan);
+            } else {
+                console.error('❌ API returned error:', response.message);
+                UI.showError(response.message || 'Failed to generate workout plan');
+            }
+            
+        } catch (error) {
+            console.error('❌ Error generating workout:', error);
+            UI.showError(error.message || 'An unexpected error occurred');
+        } finally {
+            AppState.isGenerating = false;
+            DOM.generateBtn.disabled = false;
+        }
+    }
+};
+
+// ============================================
+// Global Functions (for inline event handlers)
+// ============================================
+window.updateModelOptions = () => ModelConfig.updateOptions();
+window.proceedToWorkoutForm = () => Navigation.toWorkoutForm();
+window.backToModelSelection = () => Navigation.toModelSelection();
+window.generateWorkout = (e) => App.handleFormSubmit(e);
+
+// ============================================
+// Initialize on DOM Ready
+// ============================================
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => App.init());
+} else {
+    App.init();
+}
+
+// ============================================
+// Export for testing (if needed)
+// ============================================
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { App, ModelConfig, FormHandler, UI, API };
+}
+
+// Made with Bob

@@ -1,24 +1,28 @@
 """RAG pipeline for workout plan generation."""
 import logging
-from typing import Dict, List
+from typing import Dict, List, Union
 from app.models.user_profile import UserProfile, WorkoutSplit
 from app.models.workout_plan import WorkoutPlan, WorkoutDay, Exercise
 from app.services.vector_store import VectorStoreService
-from app.services.llm_service import LLMService
 from app.utils.validators import sanitize_user_data_for_logging
 
 logger = logging.getLogger(__name__)
 
 
 class RAGPipeline:
-    """RAG pipeline for generating personalized workout plans."""
+    """RAG pipeline for generating personalized workout plans.
     
-    def __init__(self, vector_store: VectorStoreService, llm_service: LLMService):
+    Supports multiple LLM backends:
+    - LLMService (OpenAI-compatible APIs)
+    - GGUFService (Local GGUF models via LangChain)
+    """
+    
+    def __init__(self, vector_store: VectorStoreService, llm_service):
         """Initialize the RAG pipeline.
         
         Args:
             vector_store: Vector store service instance
-            llm_service: LLM service instance
+            llm_service: LLM service instance (LLMService or GGUFService)
         """
         self.vector_store = vector_store
         self.llm_service = llm_service
