@@ -4,10 +4,13 @@ Handles workout generation requests and model validation
 """
 
 import os
+import logging
 import requests
 from flask import request, jsonify
 from . import api_bp
 from utils.validators import validate_user_profile, sanitize_string, sanitize_list_field
+
+logger = logging.getLogger(__name__)
 
 # Configuration - Use environment variable with fallback
 FASTAPI_URL = os.getenv("FASTAPI_URL", "http://localhost:7501")
@@ -107,6 +110,7 @@ def _validate_omlx_server(data):
     """Validate OMLX server connection."""
     server_url = data.get('llm_base_url', '')
     model_name = data.get('llm_model', '')
+    api_key = data.get('llm_api_key', '')
     
     if not server_url:
         return jsonify({
@@ -115,20 +119,34 @@ def _validate_omlx_server(data):
         }), 400
     
     try:
+        # Prepare headers with API key if provided
+        headers = {}
+        if api_key:
+            headers['Authorization'] = f'Bearer {api_key}'
+        
         # Test connection to OMLX server
-        response = requests.get(f"{server_url}/models", timeout=5)
+        response = requests.get(f"{server_url}/models", headers=headers, timeout=5)
         
         if response.status_code == 200:
             models = response.json()
             return jsonify({
                 "success": True,
-                "message": "OMLX server is accessible",
+                "message": "OMLX server is accessible and authenticated" if api_key else "OMLX server is accessible",
                 "details": {
                     "server_url": server_url,
                     "model": model_name,
+                    "authenticated": bool(api_key),
                     "available_models": models.get('data', [])
                 }
             })
+        elif response.status_code == 401:
+            return jsonify({
+                "success": False,
+                "message": "OMLX server requires authentication. Please provide an API key.",
+                "details": {
+                    "hint": "Enter your OMLX API key in the 'API Key (optional)' field"
+                }
+            }), 401
         else:
             return jsonify({
                 "success": False,
@@ -323,7 +341,7 @@ def generate_workout():
     
     Expected JSON payload:
     {
-        "model_config": {...},  # Optional, informational only
+        "model_config": {...},  # Now actually used!
         "height": float,
         "weight": float,
         "age": int,
@@ -369,10 +387,26 @@ def generate_workout():
             "preferred_split": data.get('preferred_split', 'full_body')
         }
         
-        # Call FastAPI backend
+        # Prepare request payload with optional model configuration
+        request_payload = {
+            "user_profile": user_profile
+        }
+        
+        # Add model configuration if provided
+        model_config = data.get('model_config')
+        if model_config:
+            # Clean up the model config - remove empty/None values
+            cleaned_config = {k: v for k, v in model_config.items() if v is not None and v != ''}
+            if cleaned_config:
+                request_payload["llm_config"] = cleaned_config
+                logger.info(f"Using model configuration: {cleaned_config.get('model_type', 'unknown')}")
+        else:
+            logger.info("No model configuration provided, using .env defaults")
+        
+        # Call FastAPI backend with new request format
         response = requests.post(
             f"{FASTAPI_URL}/api/v1/generate",
-            json=user_profile,
+            json=request_payload,
             timeout=600  # 10 minutes timeout for LLM generation
         )
         

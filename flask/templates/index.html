@@ -29,8 +29,8 @@
             <section class="card" id="modelSelectionCard">
                 <h2>Choose Your AI Model</h2>
                 
-                <div class="alert alert-info">
-                    <strong>💡 Note:</strong> Model selection is informational. To change the actual model, update your <code>.env</code> file and restart the server.
+                <div class="alert alert-success">
+                    <strong>✨ Dynamic Model Selection Enabled!</strong> Your model choice will be used for workout generation. You can also use the default model from <code>.env</code> by leaving fields empty.
                 </div>
                 
                 <div class="form-group">
@@ -79,6 +79,18 @@
                         <label for="omlxModel">Model Name</label>
                         <input type="text" id="omlxModel" value="mlx-community/Qwen3.5-4B-MLX-4bit">
                     </div>
+                    <div class="form-group">
+                        <label for="omlxApiKey">API Key (optional)</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="password" id="omlxApiKey" placeholder="Enter OMLX API key if authentication is enabled" style="flex: 1;">
+                            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('omlxApiKey', this)" style="white-space: nowrap; padding: 8px 12px;">
+                                👁️ Show
+                            </button>
+                        </div>
+                        <small style="color: var(--text-tertiary); display: block; margin-top: 5px;">
+                            Leave empty if OMLX server doesn't require authentication
+                        </small>
+                    </div>
                 </div>
 
                 <!-- GGUF Options -->
@@ -124,7 +136,12 @@
                 <div id="openaiOptions" class="model-options" style="display:none;">
                     <div class="form-group">
                         <label for="openaiApiKey">API Key</label>
-                        <input type="password" id="openaiApiKey" placeholder="sk-...">
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="password" id="openaiApiKey" placeholder="sk-..." style="flex: 1;">
+                            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('openaiApiKey', this)" style="white-space: nowrap; padding: 8px 12px;">
+                                👁️ Show
+                            </button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="openaiModel">Model</label>
@@ -140,7 +157,12 @@
                 <div id="anthropicOptions" class="model-options" style="display:none;">
                     <div class="form-group">
                         <label for="anthropicApiKey">API Key</label>
-                        <input type="password" id="anthropicApiKey" placeholder="sk-ant-...">
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="password" id="anthropicApiKey" placeholder="sk-ant-..." style="flex: 1;">
+                            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('anthropicApiKey', this)" style="white-space: nowrap; padding: 8px 12px;">
+                                👁️ Show
+                            </button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="anthropicModel">Model</label>
@@ -156,7 +178,12 @@
                 <div id="groqOptions" class="model-options" style="display:none;">
                     <div class="form-group">
                         <label for="groqApiKey">API Key</label>
-                        <input type="password" id="groqApiKey" placeholder="gsk_...">
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="password" id="groqApiKey" placeholder="gsk_..." style="flex: 1;">
+                            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('groqApiKey', this)" style="white-space: nowrap; padding: 8px 12px;">
+                                👁️ Show
+                            </button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="groqModel">Model</label>
@@ -169,10 +196,10 @@
                 </div>
 
                 <div class="alert alert-info" style="margin-top: 20px;">
-                    <strong>💡 To use a different model:</strong><br>
-                    1. Stop the server (Ctrl+C)<br>
-                    2. Update <code>.env</code> file with your model settings<br>
-                    3. Restart: <code>python frontend/app.py</code>
+                    <strong>💡 Tips:</strong><br>
+                    • Test your model configuration before generating workouts<br>
+                    • Leave fields empty to use default <code>.env</code> configuration<br>
+                    • Model selection is now dynamic - no restart required!
                 </div>
                 
                 <!-- Model Validation Output -->

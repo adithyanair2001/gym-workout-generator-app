@@ -1,4 +1,4 @@
-"""LLM service for workout plan generation using LM Studio (OpenAI-compatible API)."""
+"""LLM service for workout plan generation using OpenAI-compatible APIs (LM Studio, OMLX, OLLAMA, OpenAI, etc.)."""
 import os
 import logging
 import time
@@ -17,7 +17,7 @@ class LLMService:
     """Service for interacting with LLMs via OpenAI-compatible API.
     
     Supports:
-    - Local servers (LM Studio, OLLAMA)
+    - Local servers (LM Studio, OMLX, OLLAMA)
     - Public APIs (OpenAI, Anthropic, Groq, etc.)
     """
     
@@ -26,7 +26,9 @@ class LLMService:
         
         Args:
             base_url: Server base URL
-                - Local: 'http://127.0.0.1:1234/v1' (LM Studio)
+                - LM Studio: 'http://127.0.0.1:1234/v1'
+                - OMLX: 'http://127.0.0.1:8000/v1'
+                - OLLAMA: 'http://127.0.0.1:11434/v1'
                 - OpenAI: 'https://api.openai.com/v1'
                 - Anthropic: 'https://api.anthropic.com/v1'
                 - Groq: 'https://api.groq.com/openai/v1'
@@ -47,17 +49,37 @@ class LLMService:
         # Determine if this is a local or public API
         is_local = base_url.startswith('http://127.0.0.1') or base_url.startswith('http://localhost')
         
+        # Determine if this is OMLX (port 8000)
+        is_omlx = ':8000' in base_url
+        
         # Use provided API key, or fallback to environment variable, or default for local
         if api_key:
+            # Use explicitly provided API key (highest priority)
             final_api_key = api_key
+            logger.info("Using provided API key for authentication")
         elif not is_local:
             # For public APIs, try to get from environment
             final_api_key = os.getenv('LLM_API_KEY', '')
             if not final_api_key:
                 logger.warning("No API key provided for public LLM service. This may cause authentication errors.")
         else:
-            # For local servers, use default
-            final_api_key = os.getenv('LM_STUDIO_API_KEY', 'lm-studio')
+            # For local servers
+            if is_omlx:
+                # OMLX: Don't send API key unless explicitly provided in environment
+                # OMLX's verify_api_key() returns True when _server_state.api_key is None
+                # Sending any key (like 'lm-studio') will cause rejection if OMLX has no key configured
+                final_api_key = os.getenv('LLM_API_KEY') or os.getenv('OMLX_API_KEY')
+                if final_api_key:
+                    logger.info("Using API key from environment for OMLX authentication")
+                else:
+                    # Use None to skip Authorization header entirely
+                    final_api_key = None
+                    logger.info("No API key configured for OMLX - skipping authentication header")
+            else:
+                # LM Studio and other local servers: check environment first, then use default
+                final_api_key = os.getenv('LLM_API_KEY') or os.getenv('LM_STUDIO_API_KEY', 'lm-studio')
+                if final_api_key and final_api_key != 'lm-studio':
+                    logger.info("Using API key from environment for local server authentication")
         
         self.client = OpenAI(base_url=base_url, api_key=final_api_key)
         
@@ -225,7 +247,7 @@ Generate the complete workout plan as valid JSON. Remember: ONLY use exercises f
                 else:
                     logger.error("Model returned empty/null response (content field is empty)")
                     logger.error("This usually means the model spent all tokens on reasoning and didn't generate output")
-                    raise ValueError("Empty response from model - try increasing max_tokens or disabling reasoning mode in LM Studio")
+                    raise ValueError("Empty response from model - try increasing max_tokens or check server configuration")
                     
             except (APIConnectionError, APITimeoutError, RateLimitError) as e:
                 # Retryable errors

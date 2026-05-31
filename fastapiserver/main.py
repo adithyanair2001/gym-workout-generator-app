@@ -19,6 +19,7 @@ from fastapiserver.config import get_settings
 from fastapiserver.middleware import RequestIDMiddleware
 from fastapiserver.models.user_profile import UserProfile
 from fastapiserver.models.workout_plan import WorkoutPlan
+from fastapiserver.models.workout_request import WorkoutGenerationRequest
 from fastapiserver.services.database_tools import DatabaseTools
 from fastapiserver.services.exercisedb_client import ExerciseDBClient
 from fastapiserver.services.gguf_service import GGUFService
@@ -26,6 +27,7 @@ from fastapiserver.services.llm_service import LLMService
 from fastapiserver.services.mlx_agent_service import MLXAgentService
 from fastapiserver.services.rag_pipeline import RAGPipeline
 from fastapiserver.services.vector_store import VectorStoreService
+from fastapiserver.services.service_factory import ServiceFactory
 from fastapiserver.utils.logging_config import RequestIDFilter, setup_structured_logging
 
 # Configure structured logging
@@ -199,6 +201,17 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down application...")
     logger.info("=" * 60)
     
+    # Cleanup MLX agent if it was initialized
+    if mlx_agent:
+        logger.info("Cleaning up MLX agent...")
+        mlx_agent.cleanup()
+        logger.info("✓ MLX agent cleaned up")
+    
+    # Clear service factory cache (cleans up any cached MLX services)
+    logger.info("Clearing service factory cache...")
+    ServiceFactory.clear_cache()
+    logger.info("✓ Service factory cache cleared")
+    
     # Close exercise client
     if exercise_client:
         await exercise_client.close()
@@ -300,13 +313,43 @@ async def health_check():
         raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
 
 
+@app.post("/api/v1/admin/clear-cache")
+async def clear_service_cache():
+    """Clear the service factory cache and cleanup all cached services.
+    
+    This endpoint is useful for:
+    - Freeing memory when switching between models
+    - Forcing reload of models after configuration changes
+    - Troubleshooting memory issues
+    
+    Returns:
+        Status message with number of services cleared
+    """
+    try:
+        cache_size = len(ServiceFactory._service_cache)
+        ServiceFactory.clear_cache()
+        logger.info(f"Service cache cleared via API endpoint ({cache_size} services)")
+        return {
+            "status": "success",
+            "message": f"Service cache cleared ({cache_size} services cleaned up)",
+            "services_cleared": cache_size
+        }
+    except Exception as e:
+        logger.error(f"Error clearing service cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")
+
+
 @app.post("/api/v1/generate", response_model=WorkoutPlan)
 @limiter.limit("5/minute")  # Limit to 5 requests per minute per IP
-async def generate_workout(request: Request, user_profile: UserProfile):
-    """Generate personalized workout plan.
+async def generate_workout(request: Request, workout_request: WorkoutGenerationRequest):
+    """Generate personalized workout plan with optional model configuration.
+    
+    This endpoint now supports dynamic model selection! You can either:
+    1. Provide llm_config in the request to use a specific model
+    2. Omit llm_config to use the default .env configuration
     
     Args:
-        user_profile: User profile with fitness information
+        workout_request: Contains user_profile and optional llm_config
         
     Returns:
         Generated workout plan
@@ -315,24 +358,37 @@ async def generate_workout(request: Request, user_profile: UserProfile):
         HTTPException: If generation fails
     """
     try:
-        settings = get_settings()
-        logger.info(f"Received workout generation request for {user_profile.fitness_level.value} user")
+        user_profile = workout_request.user_profile
+        llm_config = workout_request.llm_config
         
-        # Use MLX agent or RAG pipeline based on configuration
-        if settings.use_mlx:
-            # Validate MLX agent is initialized
-            if not mlx_agent:
-                raise HTTPException(
-                    status_code=503,
-                    detail="MLX agent not initialized. Please try again later."
-                )
-            
+        # Log request details
+        if llm_config:
+            logger.info(f"Received workout generation request for {user_profile.fitness_level.value} user with {llm_config.model_type.value} model")
+        else:
+            logger.info(f"Received workout generation request for {user_profile.fitness_level.value} user (using .env defaults)")
+        
+        # Validate vector store is initialized
+        if not vector_store:
+            raise HTTPException(
+                status_code=503,
+                detail="Vector store not initialized. Please try again later."
+            )
+        
+        # Create appropriate service using factory
+        service = ServiceFactory.create_service(
+            model_config=llm_config,
+            vector_store=vector_store,
+            use_cache=True
+        )
+        
+        # Determine if this is an MLX agent or RAG pipeline
+        if isinstance(service, MLXAgentService):
             logger.info("Generating workout plan with MLX agent...")
             # Generate with MLX agent
-            raw_response = mlx_agent.generate_workout_plan(user_profile)
+            raw_response = service.generate_workout_plan(user_profile)
             
             # Parse JSON response
-            workout_data = mlx_agent.parse_json_response(raw_response)
+            workout_data = service.parse_json_response(raw_response)
             
             # Convert to WorkoutPlan model directly
             from fastapiserver.models.workout_plan import WorkoutDay, Exercise
@@ -380,16 +436,11 @@ async def generate_workout(request: Request, user_profile: UserProfile):
                 nutrition_tips=workout_data.get('nutrition_tips')
             )
         else:
-            # Validate RAG pipeline is initialized
-            if not rag_pipeline:
-                raise HTTPException(
-                    status_code=503,
-                    detail="RAG pipeline not initialized. Please try again later."
-                )
-            
             logger.info("Generating workout plan with RAG pipeline...")
+            # Create RAG pipeline with the service
+            pipeline = RAGPipeline(vector_store, service)
             # Generate workout plan with traditional RAG
-            workout_plan = await rag_pipeline.generate_workout_plan(user_profile)
+            workout_plan = await pipeline.generate_workout_plan(user_profile)
         
         logger.info(f"Successfully generated workout plan with {len(workout_plan.workout_days)} days")
         return workout_plan

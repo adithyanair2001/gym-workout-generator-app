@@ -79,18 +79,41 @@ The application will:
 - FastAPI Backend API: **http://localhost:7501**
 - API Documentation: **http://localhost:7501/docs**
 
-## 🎯 LLM Deployment Options
+## 🎯 LLM Configuration
+
+### Dynamic Model Selection (NEW! ✨)
+
+You can now **select and switch between models directly in the web UI** without restarting the server!
+
+**How it works:**
+1. Open the web UI at http://localhost:7500
+2. Select your preferred model type (MLX, OMLX, GGUF, OpenAI, etc.)
+3. Configure model-specific settings (API keys, model paths, etc.)
+4. Generate workouts - the system uses your selected configuration
+5. Switch models anytime without restarting!
+
+**Benefits:**
+- ✅ No server restart required when changing models
+- ✅ Test different models easily
+- ✅ Per-request model configuration
+- ✅ Service caching for performance
+- ✅ Falls back to `.env` defaults if no model selected
+
+**Legacy Mode:**
+You can still use `.env` file configuration by setting `USE_MLX=true` or `USE_GGUF=true`. When these are enabled, the `.env` settings take precedence over UI selections.
+
+### LLM Deployment Options
 
 ### 1. MLX Local Models (Default) 🍎
 **Best for**: Mac users, agent mode with tool calling
 
 ```bash
-# .env configuration
-USE_MLX=true
+# .env configuration (optional - can also select in UI)
+USE_MLX=false  # Set to false to enable UI selection
 MLX_MODEL_PATH=/path/to/mlx-community/Qwen3.5-4B-MLX-4bit
 ```
 
-**Pros**: Free, private, agent capabilities  
+**Pros**: Free, private, agent capabilities
 **Cons**: Mac only, slower than cloud APIs
 
 ### 2. OMLX Server 🚀
@@ -296,11 +319,9 @@ The Flask server also provides proxy endpoints to access ExerciseDB:
 
 ### Complete Documentation
 
-- [`FLASK_API_SCHEMA.md`](FLASK_API_SCHEMA.md) - Complete Flask API reference
-- [`EXERCISEDB_API_SCHEMA.md`](EXERCISEDB_API_SCHEMA.md) - ExerciseDB API reference
 - [`flask/README.md`](flask/README.md) - Frontend documentation
 - [`.env.example`](.env.example) - Configuration reference
-- FastAPI Docs: http://localhost:8000/docs (when running)
+- FastAPI Docs: http://localhost:7501/docs (when running)
 
 ## 🤝 Contributing
 
@@ -314,6 +335,70 @@ The Flask server also provides proxy endpoints to access ExerciseDB:
 
 This project is licensed under the MIT License.
 
+## 📜 Changelog
+
+### Version 2.1.0 (2026-05-31) - Enterprise-Grade Improvements
+
+#### 🔒 Security Enhancements
+- **CORS Configuration**: Environment-based CORS with `ALLOWED_ORIGINS` variable
+- **Rate Limiting**: 5 requests/minute per IP on workout generation endpoint
+- **Input Validation**: Comprehensive client and server-side validation
+
+#### 🏗️ Architecture Improvements
+- **Dynamic Model Selection**: Switch between LLM providers without server restart
+- **Service Factory Pattern**: Efficient service creation and caching
+- **Thread-Safe Initialization**: Vector store with proper locking mechanisms
+- **Memory Management**: Automatic MLX model cleanup and garbage collection
+
+#### ⚡ Performance Optimizations
+- **Service Caching**: Reuse services across requests for better performance
+- **Response Compression**: GZip middleware for reduced bandwidth
+- **Retry Logic**: Exponential backoff for transient API failures
+- **Efficient Exercise Loading**: Skip vector DB rebuild when data exists
+
+#### 🎯 New Features
+- **Model Listing API**: `/api/v1/models` endpoint for available models
+- **Warm-up/Cool-down Generation**: Automatic exercise suggestions
+- **OMLX Integration**: Full support for OMLX server with API key authentication
+- **Structured Logging**: Request IDs and JSON logging support
+- **Health Monitoring**: Enhanced health check with service status
+
+#### 🔧 Configuration
+- **Environment-Based URLs**: `FASTAPI_URL`, `FRONTEND_URL` configuration
+- **Flexible LLM Setup**: Support for MLX, GGUF, OMLX, LM Studio, OpenAI, Anthropic, Groq
+- **Port Configuration**: FastAPI on 7501, Flask on 7500 (avoiding OMLX port 8000)
+
+#### 📁 Code Organization
+- **Directory Rename**: `app/` → `fastapiserver/`, `frontend/` → `flask/`
+- **Modular Services**: Clear separation of concerns
+- **Middleware Layer**: Request ID tracking and logging
+- **Utility Functions**: Shared JSON parsing and validation
+
+#### 🐛 Bug Fixes
+- Fixed OMLX API key authentication (proper handling of None keys)
+- Fixed import optimization and circular dependencies
+- Fixed port conflicts with OMLX server
+- Fixed model configuration validation
+
+#### 📚 Documentation
+- Updated README with dynamic model selection guide
+- Added comprehensive `.env.example` with all options
+- Improved API documentation references
+- Added troubleshooting section
+
+### Version 2.0.0 (2026-05-30) - Major Refactor
+- Initial production-ready release
+- RAG pipeline implementation
+- Multi-LLM support
+- Vector database integration
+
+### Version 1.0.0 (2026-05-29) - Initial Release
+- Basic workout generation
+- ExerciseDB integration
+- Simple LLM interface
+
+---
+
 ## 🙏 Acknowledgments
 
 - **ExerciseDB**: Exercise data API
@@ -322,6 +407,7 @@ This project is licensed under the MIT License.
 - **OpenAI**: API and models
 - **Anthropic**: Claude models
 - **Groq**: Fast inference
+- **OMLX**: OpenAI-compatible MLX server
 
 ---
 

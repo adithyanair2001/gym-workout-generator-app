@@ -47,6 +47,7 @@ class MLXAgentService:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.database_tools = database_tools
+        self._is_loaded = False
         
         # Load MLX model
         logger.info(f"Loading MLX model from {model_path}...")
@@ -61,6 +62,7 @@ class MLXAgentService:
         if self.model is None or self.tokenizer is None:
             raise RuntimeError(f"Failed to load MLX model from {model_path}")
         
+        self._is_loaded = True
         logger.info("MLX model loaded successfully")
         
         # Get tools
@@ -71,6 +73,33 @@ class MLXAgentService:
         }
         
         logger.info(f"MLX Agent service initialized with {len(self.tools)} tools")
+    
+    def cleanup(self):
+        """Clean up MLX model resources.
+        
+        This method unloads the model from memory and clears references.
+        Should be called when the service is no longer needed.
+        """
+        if self._is_loaded:
+            logger.info(f"Cleaning up MLX model from {self.model_path}")
+            try:
+                # Clear model references
+                self.model = None
+                self.tokenizer = None
+                self.config = None
+                
+                # Force garbage collection to free memory
+                import gc
+                gc.collect()
+                
+                self._is_loaded = False
+                logger.info("MLX model cleanup completed")
+            except Exception as e:
+                logger.error(f"Error during MLX model cleanup: {e}")
+    
+    def __del__(self):
+        """Destructor to ensure cleanup on object deletion."""
+        self.cleanup()
     
     def _create_system_prompt(self) -> str:
         """Create the system prompt for the agent.
@@ -357,6 +386,9 @@ Start by using the tools to search for exercises, then create the complete worko
         Raises:
             Exception: If generation fails
         """
+        if not self._is_loaded:
+            raise RuntimeError("MLX model has been unloaded. Cannot generate workout plan.")
+        
         try:
             logger.info(f"Generating workout plan with MLX agent for {user_profile.fitness_level.value} user...")
             
@@ -474,6 +506,10 @@ Start by using the tools to search for exercises, then create the complete worko
         Returns:
             True if model loaded successfully, False otherwise
         """
+        if not self._is_loaded:
+            logger.warning("MLX model has been unloaded")
+            return False
+        
         try:
             # Test with a simple generation
             response = generate(

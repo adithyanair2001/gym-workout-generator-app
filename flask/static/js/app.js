@@ -81,6 +81,10 @@ const ModelConfig = {
             case 'omlx':
                 config.llm_base_url = document.getElementById('omlxServerUrl').value;
                 config.llm_model = document.getElementById('omlxModel').value;
+                const omlxApiKey = document.getElementById('omlxApiKey').value;
+                if (omlxApiKey && omlxApiKey.trim() !== '') {
+                    config.llm_api_key = omlxApiKey;
+                }
                 break;
                 
             case 'gguf':
@@ -564,6 +568,22 @@ window.handleGGUFFileSelect = (event) => {
                     Please enter the full path to this file in the text field above.
                 </div>
             `;
+        }
+    }
+};
+
+// ============================================
+// Password Visibility Toggle
+// ============================================
+window.togglePasswordVisibility = (inputId, button) => {
+    const input = document.getElementById(inputId);
+    if (input) {
+        if (input.type === 'password') {
+            input.type = 'text';
+            button.textContent = '🙈 Hide';
+        } else {
+            input.type = 'password';
+            button.textContent = '👁️ Show';
         }
     }
 };

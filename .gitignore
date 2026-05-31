@@ -47,6 +47,11 @@ agent_output.log
 test_*.py
 check_*.py
 
+# Documentation (keep only README.md)
+IMPROVEMENTS*.md
+*_SCHEMA.md
+*_API_SCHEMA.md
+
 # Data
 data/chroma_db/
 *.sqlite3
@@ -55,3 +60,4 @@ data/chroma_db/
 *.tmp
 *.bak
 *.cache
+failed_parse.json
