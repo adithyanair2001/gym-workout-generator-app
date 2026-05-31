@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Gym Workout RAG - Frontend Startup Script
+# Gym Workout RAG - Application Startup Script
 
 echo "============================================"
-echo "  Gym Workout RAG - Frontend Launcher"
+echo "  Gym Workout RAG - Application Launcher"
 echo "============================================"
 echo ""
 
@@ -18,15 +18,15 @@ if [ ! -d "venv" ]; then
     exit 1
 fi
 
-# Install frontend dependencies if needed
-echo "📦 Checking frontend dependencies..."
+# Install Flask dependencies if needed
+echo "📦 Checking Flask dependencies..."
 ./venv/bin/pip install -q Flask requests
 
 echo ""
 echo "🚀 Starting application..."
 echo ""
-echo "📍 Frontend will be available at: http://localhost:5000"
-echo "📍 Backend API will automatically start at: http://localhost:8000"
+echo "📍 Flask Frontend: http://localhost:7500"
+echo "📍 FastAPI Backend: http://localhost:8000"
 echo ""
 echo "⏳ Please wait 10-30 seconds for both servers to initialize"
 echo "💡 Press Ctrl+C to stop both servers"
@@ -35,6 +35,6 @@ echo "============================================"
 echo ""
 
 # Run the Flask app (which will auto-start FastAPI)
-./venv/bin/python frontend/app.py
+./venv/bin/python flask/app.py
 
 # Made with Bob

@@ -1,30 +1,45 @@
 """Main FastAPI application for gym workout RAG system."""
+# Standard library imports
+import logging
+import os
+import shutil
+from contextlib import asynccontextmanager
+from datetime import datetime
+
+# Third-party imports
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
+from fastapi.middleware.gzip import GZipMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-import logging
-import shutil
-import os
+from slowapi.util import get_remote_address
 
-from app.config import get_settings
-from app.models.user_profile import UserProfile
-from app.models.workout_plan import WorkoutPlan
-from app.services.exercisedb_client import ExerciseDBClient
-from app.services.vector_store import VectorStoreService
-from app.services.llm_service import LLMService
-from app.services.gguf_service import GGUFService
-from app.services.mlx_agent_service import MLXAgentService
-from app.services.database_tools import DatabaseTools
-from app.services.rag_pipeline import RAGPipeline
+# Local application imports
+from fastapi.config import get_settings
+from fastapi.middleware import RequestIDMiddleware
+from fastapi.models.user_profile import UserProfile
+from fastapi.models.workout_plan import WorkoutPlan
+from fastapi.services.database_tools import DatabaseTools
+from fastapi.services.exercisedb_client import ExerciseDBClient
+from fastapi.services.gguf_service import GGUFService
+from fastapi.services.llm_service import LLMService
+from fastapi.services.mlx_agent_service import MLXAgentService
+from fastapi.services.rag_pipeline import RAGPipeline
+from fastapi.services.vector_store import VectorStoreService
+from fastapi.utils.logging_config import RequestIDFilter, setup_structured_logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Configure structured logging
+settings_for_logging = get_settings()
+setup_structured_logging(
+    log_level=settings_for_logging.log_level,
+    use_json=settings_for_logging.use_json_logging
 )
+
+# Add request ID filter to all loggers
+request_id_filter = RequestIDFilter()
+for handler in logging.root.handlers:
+    handler.addFilter(request_id_filter)
+
 logger = logging.getLogger(__name__)
 
 # Global service instances
@@ -213,8 +228,10 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Add CORS middleware
+# Add middlewares (order matters - last added is executed first)
 settings = get_settings()
+
+# 1. CORS middleware (outermost)
 allowed_origins = settings.allowed_origins.split(",") if settings.allowed_origins else ["*"]
 app.add_middleware(
     CORSMiddleware,
@@ -223,6 +240,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 2. GZip compression middleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# 3. Request ID middleware (innermost - closest to handlers)
+app.add_middleware(RequestIDMiddleware)
 
 
 @app.get("/")
@@ -312,7 +335,7 @@ async def generate_workout(request: Request, user_profile: UserProfile):
             workout_data = mlx_agent.parse_json_response(raw_response)
             
             # Convert to WorkoutPlan model directly
-            from app.models.workout_plan import WorkoutDay, Exercise
+            from fastapi.models.workout_plan import WorkoutDay, Exercise
             
             workout_days = []
             for day_data in workout_data.get('workout_days', []):
@@ -479,7 +502,7 @@ if __name__ == "__main__":
     settings = get_settings()
     
     uvicorn.run(
-        "app.main:app",
+        "fastapi.main:app",
         host=settings.api_host,
         port=settings.api_port,
         reload=True,

@@ -1,10 +1,11 @@
 """RAG pipeline for workout plan generation."""
 import logging
 from typing import Dict, List, Union
-from app.models.user_profile import UserProfile, WorkoutSplit
-from app.models.workout_plan import WorkoutPlan, WorkoutDay, Exercise
-from app.services.vector_store import VectorStoreService
-from app.utils.validators import sanitize_user_data_for_logging
+from fastapi.models.user_profile import UserProfile, WorkoutSplit
+from fastapi.models.workout_plan import WorkoutPlan, WorkoutDay, Exercise
+from fastapi.services.vector_store import VectorStoreService
+from fastapi.services.warmup_cooldown import WarmupCooldownService
+from fastapi.utils.validators import sanitize_user_data_for_logging
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class RAGPipeline:
         """
         self.vector_store = vector_store
         self.llm_service = llm_service
+        self.warmup_cooldown_service = WarmupCooldownService()
         logger.info("RAG pipeline initialized")
     
     def build_search_query(self, user_profile: UserProfile) -> str:
@@ -232,16 +234,21 @@ Suitable for {user_profile.gym_days_per_week} days per week training with {user_
                 total_exercises += len(day_data.get('warm_up', []))
                 total_exercises += len(day_data.get('cool_down', []))
                 
+                # Generate warm-up and cool-down based on workout focus
+                focus = day_data.get('focus', 'Full Body')
+                warm_up = self.warmup_cooldown_service.generate_warmup(focus, duration_minutes=5)
+                cool_down = self.warmup_cooldown_service.generate_cooldown(focus, duration_minutes=5)
+                
+                # Update total exercises count
+                total_exercises = len(main_workout) + len(warm_up) + len(cool_down)
+                
                 workout_day = WorkoutDay(
                     day_number=day_data.get('day_number', 1),
                     day_name=day_data.get('day_name', f"Day {day_data.get('day_number', 1)}"),
-                    focus=day_data.get('focus', 'Full Body'),
-                    # TODO: Implement warm_up/cool_down generation
-                    # Should include 5-10 min dynamic stretches for warm_up
-                    # and static stretches for cool_down based on workout focus
-                    warm_up=[],
+                    focus=focus,
+                    warm_up=warm_up,
                     main_workout=main_workout,
-                    cool_down=[],
+                    cool_down=cool_down,
                     estimated_duration_minutes=day_data.get('estimated_duration_minutes', user_profile.workout_duration_minutes),
                     total_exercises=total_exercises
                 )

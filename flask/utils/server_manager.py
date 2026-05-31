@@ -76,7 +76,7 @@ class ServerManager:
             
             # Start FastAPI with output visible in terminal
             self.process = subprocess.Popen(
-                [venv_python, '-m', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000'],
+                [venv_python, '-m', 'uvicorn', 'fastapi.main:app', '--host', '0.0.0.0', '--port', '8000'],
                 cwd=backend_dir,
                 preexec_fn=os.setsid if os.name != 'nt' else None  # Create new process group on Unix
             )

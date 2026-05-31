@@ -5,6 +5,7 @@ Modern, scalable architecture with blueprints
 
 from flask import Flask, render_template
 from api import api_bp
+from api.exercisedb_routes import exercisedb_bp
 from utils import ServerManager
 
 
@@ -23,6 +24,7 @@ def create_app():
     
     # Register blueprints
     app.register_blueprint(api_bp)
+    app.register_blueprint(exercisedb_bp)
     
     # Main routes
     @app.route('/')

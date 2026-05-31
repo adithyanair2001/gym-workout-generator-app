@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     
     # Logging
     log_level: str = "INFO"
+    use_json_logging: bool = False  # Set to True for production JSON logs
     
     class Config:
         env_file = ".env"

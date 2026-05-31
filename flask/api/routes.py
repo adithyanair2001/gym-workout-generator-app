@@ -7,7 +7,7 @@ import os
 import requests
 from flask import request, jsonify
 from . import api_bp
-from frontend.utils.validators import validate_user_profile, sanitize_string, sanitize_list_field
+from utils.validators import validate_user_profile, sanitize_string, sanitize_list_field
 
 # Configuration - Use environment variable with fallback
 FASTAPI_URL = os.getenv("FASTAPI_URL", "http://localhost:8000")

@@ -1,15 +1,34 @@
-# Gym Workout RAG Backend
+# Gym Workout RAG System
 
 AI-powered personalized workout planner using Retrieval-Augmented Generation (RAG) with ChromaDB vector database and multiple LLM deployment options.
 
 ## 🌟 Features
 
 - **RAG Pipeline**: Retrieves relevant exercises from 1500+ exercises using semantic search
-- **Multiple LLM Options**: MLX, OMLX, GGUF, LM Studio, OpenAI, Anthropic, Groq
+- **Multiple LLM Options**: MLX, GGUF, LM Studio, OpenAI, Anthropic, Groq
 - **Vector Database**: ChromaDB with sentence-transformers embeddings
-- **Modern Frontend**: Beautiful, responsive UI with gradient design
-- **Scalable Architecture**: Blueprint-based Flask app with modular design
+- **Modern Flask Frontend**: Beautiful, responsive UI with gradient design
+- **FastAPI Backend**: High-performance async API with automatic documentation
+- **Scalable Architecture**: Modular design with clear separation of concerns
 - **Persistent Storage**: Vector database persists between restarts
+
+## 📁 Project Structure
+
+```
+gym-workout-rag-backend/
+├── flask/              # Flask frontend application
+│   ├── api/           # API routes and blueprints
+│   ├── static/        # CSS, JS, images
+│   ├── templates/     # HTML templates
+│   └── utils/         # Server manager and utilities
+├── fastapi/           # FastAPI backend application
+│   ├── models/        # Pydantic models
+│   ├── services/      # Business logic and LLM services
+│   ├── middleware/    # Request ID and other middleware
+│   └── utils/         # Utilities and validators
+├── data/              # Vector database storage
+└── run_frontend.sh    # Startup script
+```
 
 ## 🚀 Quick Start
 
@@ -46,58 +65,19 @@ cp .env.example .env
 
 5. **Run the application**:
 ```bash
-cd frontend
-python app.py
+bash run_frontend.sh
 ```
 
 The application will:
 - Start FastAPI backend on port 8000
 - Fetch exercises from ExerciseDB (first run only)
 - Create embeddings and load into ChromaDB
-- Start Flask frontend on port 5000
+- Start Flask frontend on port 7500
 
-Access the UI at: **http://localhost:5000**
-
-## 📁 Project Structure
-
-```
-gym-workout-rag-backend/
-├── app/                          # FastAPI Backend
-│   ├── main.py                  # FastAPI application
-│   ├── config.py                # Configuration
-│   ├── models/                  # Pydantic models
-│   ├── services/                # Business logic
-│   │   ├── exercisedb_client.py # Exercise API client
-│   │   ├── vector_store.py      # ChromaDB interface
-│   │   ├── llm_service.py       # LLM integration
-│   │   ├── gguf_service.py      # GGUF model support
-│   │   ├── mlx_agent_service.py # MLX agent with tools
-│   │   └── rag_pipeline.py      # RAG orchestration
-│   └── utils/                   # Utilities
-│
-├── frontend/                     # Flask Frontend
-│   ├── app.py                   # Application factory
-│   ├── api/                     # API Blueprint
-│   │   └── routes.py           # API endpoints
-│   ├── utils/                   # Utilities
-│   │   └── server_manager.py   # Backend lifecycle
-│   ├── static/                  # Static assets
-│   │   ├── css/styles.css      # Modern CSS
-│   │   └── js/app.js           # ES6+ JavaScript
-│   └── templates/               # Jinja2 templates
-│       └── index.html          # Main SPA
-│
-├── docs/                        # Documentation
-│   ├── OMLX_SETUP.md           # OMLX setup guide
-│   └── FRONTEND_ARCHITECTURE.md # Frontend docs
-│
-├── data/                        # Data storage
-│   └── chroma_db/              # Vector database
-│
-├── .env.example                 # Environment template
-├── requirements.txt             # Python dependencies
-└── README.md                    # This file
-```
+**Access Points:**
+- Flask Frontend UI: **http://localhost:7500**
+- FastAPI Backend API: **http://localhost:8000**
+- API Documentation: **http://localhost:8000/docs**
 
 ## 🎯 LLM Deployment Options
 
@@ -168,7 +148,7 @@ LLM_API_KEY=sk-...
 - **Error Handling**: Clear error messages and recovery
 - **Loading States**: Progress indicators during generation
 
-See [`frontend/README.md`](frontend/README.md) for details.
+See [`flask/README.md`](flask/README.md) for details.
 
 ## 🔧 Configuration
 
@@ -204,7 +184,7 @@ EXERCISEDB_API_KEY=your_key_here
 - `POST /api/v1/generate` - Generate workout plan
 - `GET /health` - Health check with vector DB status
 
-### Flask Frontend (Port 5000)
+### Flask Frontend (Port 7500)
 
 - `GET /` - Main application page
 - `POST /api/generate` - Proxy to backend
@@ -215,13 +195,13 @@ EXERCISEDB_API_KEY=your_key_here
 ### Running Backend Only
 
 ```bash
-python -m uvicorn app.main:app --reload
+python -m uvicorn fastapi.main:app --reload
 ```
 
 ### Running Frontend Only
 
 ```bash
-cd frontend
+cd flask
 python app.py
 ```
 
@@ -240,11 +220,10 @@ python app.py
 
 1. **Start the application**:
 ```bash
-cd frontend
-python app.py
+bash run_frontend.sh
 ```
 
-2. **Open browser**: http://localhost:5000
+2. **Open browser**: http://localhost:7500
 
 3. **Select AI model** (Step 1):
    - Choose your preferred model type
@@ -288,12 +267,38 @@ rm -rf data/chroma_db/
 # Restart application (will refetch exercises)
 ```
 
-## 📚 Documentation
+## 📚 API Documentation
 
-- [`frontend/README.md`](frontend/README.md) - Frontend documentation
-- [`docs/FRONTEND_ARCHITECTURE.md`](docs/FRONTEND_ARCHITECTURE.md) - Architecture details
-- [`docs/OMLX_SETUP.md`](docs/OMLX_SETUP.md) - OMLX setup guide
+### Flask Server API
+The Flask frontend provides several API endpoints:
+
+- **Workout Generation**: `POST /api/generate` - Generate personalized workout plans
+- **Model Validation**: `POST /api/validate-model` - Validate LLM configuration
+- **Health Check**: `GET /api/health` - Check service health
+- **List Models**: `GET /api/models` - List available LLM models
+
+### ExerciseDB Proxy API
+The Flask server also provides proxy endpoints to access ExerciseDB:
+
+- **List Exercises**: `GET /api/exercises?limit=20&cursor=...`
+- **Get Exercise**: `GET /api/exercises/:id`
+- **Search Exercises**: `GET /api/exercises/search?query=bench+press`
+- **Filter by Muscle**: `GET /api/exercises/target/:muscle`
+- **Filter by Body Part**: `GET /api/exercises/bodypart/:part`
+- **Filter by Equipment**: `GET /api/exercises/equipment/:equipment`
+- **List Targets**: `GET /api/exercises/targets`
+- **List Body Parts**: `GET /api/exercises/bodyparts`
+- **List Equipment**: `GET /api/exercises/equipments`
+
+**Note**: ExerciseDB API requires a RapidAPI key. Get yours at: https://rapidapi.com/justin-WFnsXH_t6/api/exercisedb
+
+### Complete Documentation
+
+- [`FLASK_API_SCHEMA.md`](FLASK_API_SCHEMA.md) - Complete Flask API reference
+- [`EXERCISEDB_API_SCHEMA.md`](EXERCISEDB_API_SCHEMA.md) - ExerciseDB API reference
+- [`flask/README.md`](flask/README.md) - Frontend documentation
 - [`.env.example`](.env.example) - Configuration reference
+- FastAPI Docs: http://localhost:8000/docs (when running)
 
 ## 🤝 Contributing
 
@@ -318,6 +323,6 @@ This project is licensed under the MIT License.
 
 ---
 
-**Version**: 2.0.0  
-**Last Updated**: 2026-05-17  
+**Version**: 2.1.0
+**Last Updated**: 2026-05-31
 **Status**: Production Ready ✅

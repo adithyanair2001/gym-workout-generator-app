@@ -7,8 +7,8 @@ from typing import Dict, List, Optional
 from openai import OpenAI
 from openai import APIError, APIConnectionError, RateLimitError, APITimeoutError
 
-from app.models.user_profile import UserProfile
-from app.utils.json_parser import parse_llm_json_response
+from fastapi.models.user_profile import UserProfile
+from fastapi.utils.json_parser import parse_llm_json_response
 
 logger = logging.getLogger(__name__)
 
