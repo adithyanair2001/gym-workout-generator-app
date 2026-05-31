@@ -105,86 +105,38 @@ async def lifespan(app: FastAPI):
             logger.info(f"  To rebuild: rm -rf {settings.chroma_db_path}")
             logger.info("=" * 60)
         
-        # Initialize LLM service based on configuration
+        # Note: LLM services are now initialized lazily via ServiceFactory
+        # Models are only loaded when actually needed for generation
+        # This prevents unnecessary memory usage at startup
+        
+        logger.info("=" * 60)
+        logger.info("LLM Configuration (Lazy Loading Enabled)")
+        logger.info("=" * 60)
+        
         if settings.use_mlx:
-            logger.info("=" * 60)
-            logger.info("Using MLX local model (agent mode)")
-            logger.info(f"Model: {settings.mlx_model_path}")
-            logger.info("=" * 60)
-            
-            # Initialize database tools for MLX agent
-            logger.info("Initializing database tools...")
-            database_tools = DatabaseTools(vector_store)
-            logger.info("Database tools initialized")
-            
-            # Initialize MLX agent service
-            logger.info("Initializing MLX agent service...")
-            mlx_agent = MLXAgentService(
-                model_path=settings.mlx_model_path,
-                database_tools=database_tools,
-                temperature=settings.llm_temperature,
-                max_tokens=settings.llm_max_tokens
-            )
-            logger.info("MLX agent service initialized")
-            
-            # For MLX agent, we don't use RAG pipeline
-            rag_pipeline = None
-            llm_service = None
-            gguf_service = None
+            logger.info(f"✓ MLX mode configured: {settings.mlx_model_path}")
+            logger.info("  Model will load on first generation request")
         elif settings.use_gguf:
-            logger.info("=" * 60)
-            logger.info("Using GGUF model with LangChain")
-            logger.info(f"Model: {settings.gguf_model_path}")
-            logger.info(f"Context: {settings.gguf_n_ctx}, GPU layers: {settings.gguf_n_gpu_layers}")
-            logger.info("=" * 60)
-            
-            # Initialize GGUF service
-            logger.info("Initializing GGUF service...")
-            gguf_service = GGUFService(
-                model_path=settings.gguf_model_path,
-                n_ctx=settings.gguf_n_ctx,
-                n_gpu_layers=settings.gguf_n_gpu_layers,
-                temperature=settings.llm_temperature,
-                max_tokens=settings.llm_max_tokens
-            )
-            logger.info("GGUF service initialized")
-            
-            # Initialize RAG pipeline with GGUF
-            logger.info("Initializing RAG pipeline...")
-            rag_pipeline = RAGPipeline(vector_store, gguf_service)
-            logger.info("RAG pipeline initialized")
-            
-            mlx_agent = None
-            database_tools = None
-            llm_service = None
+            logger.info(f"✓ GGUF mode configured: {settings.gguf_model_path}")
+            logger.info("  Model will load on first generation request")
         else:
-            logger.info("=" * 60)
-            logger.info("Using external LLM API")
-            logger.info(f"URL: {settings.llm_base_url}")
-            logger.info(f"Model: {settings.llm_model}")
+            logger.info(f"✓ External API configured: {settings.llm_base_url}")
+            logger.info(f"  Model: {settings.llm_model}")
             if settings.llm_api_key:
-                logger.info("API key: Configured ✓")
-            logger.info("=" * 60)
-            
-            # Initialize LLM service with API key
-            logger.info("Initializing LLM service...")
-            llm_service = LLMService(
-                base_url=settings.llm_base_url,
-                model=settings.llm_model,
-                api_key=settings.llm_api_key,
-                temperature=settings.llm_temperature,
-                max_tokens=settings.llm_max_tokens
-            )
-            logger.info("LLM service initialized (will connect on first use)")
-            
-            # Initialize RAG pipeline
-            logger.info("Initializing RAG pipeline...")
-            rag_pipeline = RAGPipeline(vector_store, llm_service)
-            logger.info("RAG pipeline initialized")
-            
-            mlx_agent = None
-            database_tools = None
-            gguf_service = None
+                logger.info("  API key: Configured ✓")
+            logger.info("  Connection will be established on first request")
+        
+        logger.info("=" * 60)
+        logger.info("💡 Models load on-demand to save memory")
+        logger.info("   Use dynamic model selection in UI for flexibility")
+        logger.info("=" * 60)
+        
+        # Services will be created by ServiceFactory when needed
+        mlx_agent = None
+        database_tools = None
+        llm_service = None
+        gguf_service = None
+        rag_pipeline = None
         
         logger.info("=" * 60)
         logger.info("Application startup complete!")

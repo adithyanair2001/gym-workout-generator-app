@@ -482,10 +482,19 @@ def health_check():
         }), 503
 
 
-@api_bp.route('/models', methods=['GET'])
+@api_bp.route('/models', methods=['GET', 'POST'])
 def list_models():
     """
     List available models from the LLM provider.
+    
+    GET: Uses backend's default configuration from .env
+    POST: Accepts custom base_url and api_key to fetch models dynamically
+    
+    POST JSON payload:
+    {
+        "base_url": str,
+        "api_key": str (optional)
+    }
     
     Returns:
     {
@@ -495,20 +504,72 @@ def list_models():
     }
     """
     try:
-        # Call FastAPI backend
-        response = requests.get(f"{FASTAPI_URL}/api/v1/models", timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return jsonify({
-                "success": True,
-                **data
-            })
+        if request.method == 'POST':
+            # POST request with custom configuration
+            data = request.json
+            base_url = data.get('base_url')
+            api_key = data.get('api_key')
+            
+            if not base_url:
+                return jsonify({
+                    "success": False,
+                    "message": "base_url is required"
+                }), 400
+            
+            # Prepare headers with API key if provided
+            headers = {}
+            if api_key:
+                headers['Authorization'] = f'Bearer {api_key}'
+            
+            # Fetch models directly from the provided URL
+            try:
+                response = requests.get(f"{base_url}/models", headers=headers, timeout=10)
+                
+                if response.status_code == 200:
+                    models_data = response.json()
+                    models = models_data.get('data', [])
+                    
+                    return jsonify({
+                        "success": True,
+                        "provider": "omlx",
+                        "models": models
+                    })
+                elif response.status_code == 401:
+                    return jsonify({
+                        "success": False,
+                        "message": "Authentication failed. Please check your API key."
+                    }), 401
+                else:
+                    return jsonify({
+                        "success": False,
+                        "message": f"Server returned status {response.status_code}"
+                    }), response.status_code
+                    
+            except requests.exceptions.ConnectionError:
+                return jsonify({
+                    "success": False,
+                    "message": "Cannot connect to OMLX server. Make sure it's running."
+                }), 503
+            except requests.exceptions.Timeout:
+                return jsonify({
+                    "success": False,
+                    "message": "Connection timeout. Server may be slow or unavailable."
+                }), 504
         else:
-            return jsonify({
-                "success": False,
-                "message": f"Backend error: {response.text}"
-            }), response.status_code
+            # GET request - use backend's default configuration
+            response = requests.get(f"{FASTAPI_URL}/api/v1/models", timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return jsonify({
+                    "success": True,
+                    **data
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "message": f"Backend error: {response.text}"
+                }), response.status_code
             
     except requests.exceptions.Timeout:
         return jsonify({

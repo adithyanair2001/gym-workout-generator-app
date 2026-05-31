@@ -125,7 +125,7 @@ class WarmupCooldownService:
                     target_muscles=["dynamic_warmup"],
                     sets=1,
                     reps=f"{warmup_ex.get('duration_seconds', 30)}s" if "duration_seconds" in warmup_ex else str(warmup_ex.get('reps', 10)),
-                    rest_seconds=0,
+                    rest_seconds=30,  # Minimum rest between warm-up exercises
                     gif_url="",
                     instructions=warmup_ex["instructions"],
                     notes="Perform at moderate intensity to increase heart rate and blood flow"
@@ -163,7 +163,7 @@ class WarmupCooldownService:
                     target_muscles=["static_stretch"],
                     sets=1,
                     reps=f"{cooldown_ex['duration_seconds']}s",
-                    rest_seconds=0,
+                    rest_seconds=30,  # Minimum rest between cool-down stretches
                     gif_url="",
                     instructions=cooldown_ex["instructions"],
                     notes="Hold each stretch without bouncing. Breathe deeply and relax into the stretch."

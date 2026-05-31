@@ -42,16 +42,21 @@ def parse_llm_json_response(response: str, save_on_error: bool = True) -> Dict:
             end = response.find("```", start)
             json_str = response[start:end].strip()
         else:
-            # Strategy 3: Try to find JSON object boundaries
+            # Strategy 3: Try to find JSON object boundaries by matching braces
             start = response.find("{")
-            end = response.rfind("}") + 1
-            if start != -1 and end != 0:
-                json_str = response[start:end]
-            else:
-                logger.error("Could not find JSON in response")
+            if start == -1:
+                logger.error("Could not find opening brace in response")
                 if save_on_error:
                     _save_failed_parse(response)
                 raise ValueError("Could not find JSON in response")
+            
+            # Find the matching closing brace by tracking depth
+            json_str = _extract_complete_json_object(response, start)
+            if not json_str:
+                logger.error("Could not find matching closing brace")
+                if save_on_error:
+                    _save_failed_parse(response)
+                raise ValueError("Could not extract complete JSON object")
         
         try:
             return json.loads(json_str)
@@ -82,6 +87,57 @@ def parse_llm_json_response(response: str, save_on_error: bool = True) -> Dict:
             if save_on_error:
                 _save_failed_parse(response)
             raise ValueError(f"Invalid JSON in LLM response after all repair attempts: {e}")
+
+
+def _extract_complete_json_object(text: str, start_pos: int) -> str:
+    """Extract a complete JSON object by matching opening { with closing }.
+    
+    Tracks brace depth to find the exact position where the JSON object ends,
+    ignoring any extra text or malformed braces after the valid JSON.
+    
+    Args:
+        text: Text containing JSON object
+        start_pos: Position of the opening {
+        
+    Returns:
+        Complete JSON object string, or empty string if matching brace not found
+    """
+    depth = 0
+    in_string = False
+    escape_next = False
+    
+    for i in range(start_pos, len(text)):
+        char = text[i]
+        
+        # Handle escape sequences in strings
+        if escape_next:
+            escape_next = False
+            continue
+            
+        if char == '\\':
+            escape_next = True
+            continue
+        
+        # Track string boundaries
+        if char == '"' and not escape_next:
+            in_string = not in_string
+            continue
+        
+        # Only count braces outside of strings
+        if not in_string:
+            if char == '{':
+                depth += 1
+            elif char == '}':
+                depth -= 1
+                # When depth returns to 0, we've found the matching closing brace
+                if depth == 0:
+                    json_str = text[start_pos:i+1]
+                    logger.info(f"Extracted complete JSON object ({len(json_str)} chars, ending at position {i+1})")
+                    return json_str
+    
+    # No matching closing brace found
+    logger.warning(f"No matching closing brace found for opening brace at position {start_pos}")
+    return ""
 
 
 def _attempt_json_repair(json_str: str) -> str:

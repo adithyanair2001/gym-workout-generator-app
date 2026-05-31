@@ -69,6 +69,7 @@ class ModelConfig(BaseModel):
         return v
     
     class Config:
+        protected_namespaces = ()  # Allow fields starting with 'model_'
         json_schema_extra = {
             "example": {
                 "model_type": "omlx",

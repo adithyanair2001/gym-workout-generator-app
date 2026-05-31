@@ -133,6 +133,7 @@ CRITICAL RULES - READ CAREFULLY:
 7. Balance muscle groups across the week
 8. Include warm-up (5-10 min) and cool-down (5 min) exercises
 9. Ensure total workout duration matches user's available time
+10. IMPORTANT: Generate exactly {user_profile.gym_days_per_week} workout days in the workout_days array
 
 USER PROFILE:
 - Age: {user_profile.age}, Gender: {user_profile.gender}
@@ -158,7 +159,7 @@ For endurance: Higher reps (15+), lower weight
 AVAILABLE EXERCISES (USE ONLY THESE):
 {exercises_text}
 
-OUTPUT JSON SCHEMA:
+OUTPUT JSON SCHEMA (Example showing structure - YOU MUST GENERATE {user_profile.gym_days_per_week} DAYS):
 {{
   "workout_days": [
     {{
@@ -179,13 +180,33 @@ OUTPUT JSON SCHEMA:
       ],
       "cool_down": [],
       "estimated_duration_minutes": 60
+    }},
+    {{
+      "day_number": 2,
+      "day_name": "Day 2: Lower Body",
+      "focus": "Quads, Hamstrings, Glutes",
+      "warm_up": [],
+      "main_workout": [
+        {{
+          "exercise_id": "0002",
+          "name": "barbell squat",
+          "target_muscles": ["quadriceps"],
+          "sets": 4,
+          "reps": "8-12",
+          "rest_seconds": 120,
+          "notes": "Keep chest up and core tight"
+        }}
+      ],
+      "cool_down": [],
+      "estimated_duration_minutes": 60
     }}
+    ... CONTINUE FOR ALL {user_profile.gym_days_per_week} DAYS
   ],
   "progression_notes": "Increase weight by 2.5-5% when you can complete all sets with good form",
   "nutrition_tips": "Aim for 1.6-2.2g protein per kg bodyweight"
 }}
 
-Generate the complete workout plan as valid JSON. Remember: ONLY use exercises from the provided list above."""
+CRITICAL: Generate the complete workout plan with EXACTLY {user_profile.gym_days_per_week} workout days as valid JSON. Remember: ONLY use exercises from the provided list above. DO NOT stop after 1 day - generate ALL {user_profile.gym_days_per_week} days."""
         
         return prompt
     

@@ -214,13 +214,19 @@ Suitable for {user_profile.gym_days_per_week} days per week training with {user_
                         exercise_info = exercise_lookup[ex_id]
                         meta = exercise_info.get('metadata', {})
                         
+                        # Validate and correct rest_seconds (must be >= 30)
+                        rest_seconds = ex_data.get('rest_seconds', 60)
+                        if rest_seconds < 30:
+                            logger.warning(f"Exercise {ex_id} has invalid rest_seconds={rest_seconds}, correcting to 60")
+                            rest_seconds = 60
+                        
                         exercise = Exercise(
                             exercise_id=ex_id,
                             name=ex_data.get('name', meta.get('name', '')),
                             target_muscles=ex_data.get('target_muscles', meta.get('target_muscles', '').split(',')),
                             sets=ex_data.get('sets', 3),
                             reps=ex_data.get('reps', '8-12'),
-                            rest_seconds=ex_data.get('rest_seconds', 60),
+                            rest_seconds=rest_seconds,
                             gif_url=meta.get('gif_url', ''),
                             instructions=ex_data.get('instructions', []),
                             notes=ex_data.get('notes')

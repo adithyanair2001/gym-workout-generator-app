@@ -26,8 +26,11 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     
     # LLM Configuration - Multiple Options
+    # NOTE: Models are now loaded lazily (on-demand) to save memory
+    # Set all to False to use dynamic model selection from UI
+    
     # Option 1: Local MLX models (recommended for Mac)
-    use_mlx: bool = True
+    use_mlx: bool = False  # Changed to False for lazy loading
     mlx_model_path: str = "/Users/adithyanair/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit"
     
     # Option 2: Local GGUF models with LangChain

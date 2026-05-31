@@ -38,6 +38,8 @@ const DOM = {
 // Model Configuration
 // ============================================
 const ModelConfig = {
+    availableModels: [],
+    
     /**
      * Update visible model options based on selected type
      */
@@ -63,6 +65,114 @@ const ModelConfig = {
         const optionsId = optionsMap[modelType];
         if (optionsId) {
             document.getElementById(optionsId).style.display = 'block';
+        }
+        
+        // Load cached values for OMLX
+        if (modelType === 'omlx') {
+            this.loadCachedOMLXConfig();
+        }
+    },
+    
+    /**
+     * Load cached OMLX configuration from backend
+     */
+    async loadCachedOMLXConfig() {
+        try {
+            const response = await fetch('/api/health');
+            const data = await response.json();
+            
+            // If backend has OMLX configured, pre-fill the fields
+            if (data.backend_config) {
+                const serverUrl = document.getElementById('omlxServerUrl');
+                const apiKey = document.getElementById('omlxApiKey');
+                
+                if (data.backend_config.llm_base_url) {
+                    serverUrl.value = data.backend_config.llm_base_url;
+                }
+                if (data.backend_config.llm_api_key) {
+                    apiKey.value = data.backend_config.llm_api_key;
+                }
+            }
+        } catch (error) {
+            console.log('Could not load cached config:', error);
+        }
+    },
+    
+    /**
+     * Fetch available models from OMLX server
+     */
+    async fetchOMLXModels() {
+        const serverUrl = document.getElementById('omlxServerUrl').value;
+        const apiKey = document.getElementById('omlxApiKey').value;
+        
+        if (!serverUrl) {
+            return { success: false, message: 'Please enter server URL first' };
+        }
+        
+        try {
+            // Call backend to fetch models
+            const response = await fetch('/api/models', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    base_url: serverUrl,
+                    api_key: apiKey || null
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success && data.models) {
+                this.availableModels = data.models;
+                this.updateModelDropdown();
+                return { success: true, count: data.models.length };
+            } else {
+                return { success: false, message: data.message || 'Failed to fetch models' };
+            }
+        } catch (error) {
+            return { success: false, message: `Error: ${error.message}` };
+        }
+    },
+    
+    /**
+     * Update model dropdown with fetched models
+     */
+    updateModelDropdown() {
+        const modelInput = document.getElementById('omlxModel');
+        const currentValue = modelInput.value;
+        
+        // Convert input to select dropdown
+        if (modelInput.tagName === 'INPUT') {
+            const select = document.createElement('select');
+            select.id = 'omlxModel';
+            select.className = modelInput.className;
+            
+            // Add models as options
+            this.availableModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.id;
+                select.appendChild(option);
+            });
+            
+            // Replace input with select
+            modelInput.parentNode.replaceChild(select, modelInput);
+            
+            // Try to select the current value if it exists
+            if (currentValue && this.availableModels.some(m => m.id === currentValue)) {
+                select.value = currentValue;
+            }
+        } else {
+            // Already a select, just update options
+            modelInput.innerHTML = '';
+            this.availableModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.id;
+                modelInput.appendChild(option);
+            });
         }
     },
     
@@ -595,6 +705,58 @@ window.updateModelOptions = () => ModelConfig.updateOptions();
 window.proceedToWorkoutForm = () => Navigation.toWorkoutForm();
 window.backToModelSelection = () => Navigation.toModelSelection();
 window.generateWorkout = (e) => App.handleFormSubmit(e);
+
+/**
+ * Fetch available models from OMLX server
+ */
+window.fetchOMLXModels = async () => {
+    const statusDiv = document.getElementById('omlxModelFetchStatus');
+    const fetchBtn = document.getElementById('fetchOMLXModelsBtn');
+    
+    if (fetchBtn) {
+        fetchBtn.disabled = true;
+        fetchBtn.textContent = '🔄 Fetching Models...';
+    }
+    
+    if (statusDiv) {
+        statusDiv.innerHTML = '<div class="alert alert-info">Fetching available models...</div>';
+    }
+    
+    try {
+        const result = await ModelConfig.fetchOMLXModels();
+        
+        if (result.success) {
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-success">
+                        ✅ Found ${result.count} model(s). Select one from the dropdown below.
+                    </div>
+                `;
+            }
+        } else {
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="alert alert-error">
+                        ❌ ${result.message}
+                    </div>
+                `;
+            }
+        }
+    } catch (error) {
+        if (statusDiv) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-error">
+                    ❌ Error: ${error.message}
+                </div>
+            `;
+        }
+    } finally {
+        if (fetchBtn) {
+            fetchBtn.disabled = false;
+            fetchBtn.textContent = '🔄 Fetch Available Models';
+        }
+    }
+};
 
 // ============================================
 // Initialize on DOM Ready
