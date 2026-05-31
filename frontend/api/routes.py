@@ -3,12 +3,14 @@ API Routes for Gym Workout RAG
 Handles workout generation requests and model validation
 """
 
+import os
 import requests
 from flask import request, jsonify
 from . import api_bp
+from frontend.utils.validators import validate_user_profile, sanitize_string, sanitize_list_field
 
-# Configuration
-FASTAPI_URL = "http://localhost:8000"
+# Configuration - Use environment variable with fallback
+FASTAPI_URL = os.getenv("FASTAPI_URL", "http://localhost:8000")
 
 
 @api_bp.route('/validate-model', methods=['POST'])
@@ -344,7 +346,15 @@ def generate_workout():
     try:
         data = request.json
         
-        # Prepare user profile - match backend model field names
+        # Validate input data
+        is_valid, error_message = validate_user_profile(data)
+        if not is_valid:
+            return jsonify({
+                "success": False,
+                "message": f"Validation error: {error_message}"
+            }), 400
+        
+        # Sanitize and prepare user profile - match backend model field names
         user_profile = {
             "height": float(data['height']),
             "weight": float(data['weight']),
@@ -436,6 +446,53 @@ def health_check():
                 "error": str(e)
             }
         }), 503
+
+
+@api_bp.route('/models', methods=['GET'])
+def list_models():
+    """
+    List available models from the LLM provider.
+    
+    Returns:
+    {
+        "success": bool,
+        "provider": str,
+        "models": [...] or "message": str
+    }
+    """
+    try:
+        # Call FastAPI backend
+        response = requests.get(f"{FASTAPI_URL}/api/v1/models", timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            return jsonify({
+                "success": True,
+                **data
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": f"Backend error: {response.text}"
+            }), response.status_code
+            
+    except requests.exceptions.Timeout:
+        return jsonify({
+            "success": False,
+            "message": "Request timeout. The LLM server may be slow or unavailable."
+        }), 504
+        
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            "success": False,
+            "message": "Cannot connect to backend server. Please ensure the FastAPI server is running."
+        }), 503
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Unexpected error: {str(e)}"
+        }), 500
 
 
 # Helper functions

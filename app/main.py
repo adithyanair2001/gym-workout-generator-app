@@ -1,7 +1,10 @@
 """Main FastAPI application for gym workout RAG system."""
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import logging
 import shutil
 import os
@@ -195,6 +198,9 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
 
 
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 # Create FastAPI app
 app = FastAPI(
     title="Gym Workout RAG API",
@@ -203,10 +209,16 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Add rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Add CORS middleware
+settings = get_settings()
+allowed_origins = settings.allowed_origins.split(",") if settings.allowed_origins else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -266,7 +278,8 @@ async def health_check():
 
 
 @app.post("/api/v1/generate", response_model=WorkoutPlan)
-async def generate_workout(user_profile: UserProfile):
+@limiter.limit("5/minute")  # Limit to 5 requests per minute per IP
+async def generate_workout(request: Request, user_profile: UserProfile):
     """Generate personalized workout plan.
     
     Args:
@@ -412,6 +425,53 @@ async def get_stats():
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/models")
+async def list_models():
+    """List available models from the LLM provider.
+    
+    Returns:
+        List of available models with their metadata
+        
+    Raises:
+        HTTPException: If listing fails or service not available
+    """
+    try:
+        settings = get_settings()
+        
+        # Only works with external LLM services (not MLX or GGUF)
+        if settings.use_mlx:
+            return {
+                "provider": "mlx",
+                "message": "MLX uses local models. Current model path configured.",
+                "current_model": settings.mlx_model_path
+            }
+        elif settings.use_gguf:
+            return {
+                "provider": "gguf",
+                "message": "GGUF uses local models. Current model path configured.",
+                "current_model": settings.gguf_model_path
+            }
+        
+        if not llm_service:
+            raise HTTPException(
+                status_code=503,
+                detail="LLM service not initialized"
+            )
+        
+        models = llm_service.list_models()
+        
+        return {
+            "provider": "external_api",
+            "base_url": settings.llm_base_url,
+            "models": models,
+            "count": len(models)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing models: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list models: {str(e)}")
 
 
 if __name__ == "__main__":

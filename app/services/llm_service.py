@@ -1,9 +1,11 @@
 """LLM service for workout plan generation using LM Studio (OpenAI-compatible API)."""
 import os
 import logging
+import time
 from typing import Dict, List, Optional
 
 from openai import OpenAI
+from openai import APIError, APIConnectionError, RateLimitError, APITimeoutError
 
 from app.models.user_profile import UserProfile
 from app.utils.json_parser import parse_llm_json_response
@@ -167,56 +169,87 @@ Generate the complete workout plan as valid JSON. Remember: ONLY use exercises f
     
     async def generate_workout_plan(
         self,
-        prompt: str
+        prompt: str,
+        max_retries: int = 3
     ) -> Dict:
-        """Generate workout plan using LLM.
+        """Generate workout plan using LLM with retry logic.
         
         Args:
             prompt: Formatted prompt for the LLM
+            max_retries: Maximum number of retry attempts
             
         Returns:
             Generated workout plan as dictionary
             
         Raises:
-            Exception: If generation fails
+            Exception: If generation fails after all retries
         """
-        try:
-            logger.info(f"Generating workout plan with {self.model}...")
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are an expert personal trainer AI assistant. You MUST respond with ONLY valid JSON, no additional text, explanations, or markdown formatting. DO NOT include reasoning or thinking process - output the JSON directly."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens
-            )
-            
-            message = response.choices[0].message
-            generated_text = message.content
-            
-            # Check if model used reasoning tokens (Qwen models)
-            if hasattr(message, 'reasoning_content') and message.reasoning_content:
-                logger.warning(f"Model used {len(message.reasoning_content)} chars for reasoning - this wastes tokens!")
-                logger.info(f"Reasoning content: {message.reasoning_content[:500]}...")
-            
-            if generated_text:
-                logger.info(f"Generated response length: {len(generated_text)} characters")
-                logger.info(f"Full generated response:\n{generated_text}")
+        last_exception = None
+        
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    # Exponential backoff: 2^attempt seconds
+                    wait_time = 2 ** attempt
+                    logger.info(f"Retry attempt {attempt + 1}/{max_retries} after {wait_time}s wait...")
+                    time.sleep(wait_time)
                 
-                # Parse JSON from response
-                workout_plan = self.parse_json_response(generated_text)
+                logger.info(f"Generating workout plan with {self.model}... (attempt {attempt + 1}/{max_retries})")
                 
-                return workout_plan
-            else:
-                logger.error("Model returned empty/null response (content field is empty)")
-                logger.error("This usually means the model spent all tokens on reasoning and didn't generate output")
-                raise ValueError("Empty response from model - try increasing max_tokens or disabling reasoning mode in LM Studio")
-            
-        except Exception as e:
-            logger.error(f"Error generating workout plan: {e}")
-            raise
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "You are an expert personal trainer AI assistant. You MUST respond with ONLY valid JSON, no additional text, explanations, or markdown formatting. DO NOT include reasoning or thinking process - output the JSON directly."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens
+                )
+                
+                message = response.choices[0].message
+                generated_text = message.content
+                
+                # Check if model used reasoning tokens (Qwen models)
+                if hasattr(message, 'reasoning_content') and message.reasoning_content:
+                    logger.warning(f"Model used {len(message.reasoning_content)} chars for reasoning - this wastes tokens!")
+                    logger.info(f"Reasoning content: {message.reasoning_content[:500]}...")
+                
+                if generated_text:
+                    logger.info(f"Generated response length: {len(generated_text)} characters")
+                    logger.info(f"Full generated response:\n{generated_text}")
+                    
+                    # Parse JSON from response
+                    workout_plan = self.parse_json_response(generated_text)
+                    
+                    return workout_plan
+                else:
+                    logger.error("Model returned empty/null response (content field is empty)")
+                    logger.error("This usually means the model spent all tokens on reasoning and didn't generate output")
+                    raise ValueError("Empty response from model - try increasing max_tokens or disabling reasoning mode in LM Studio")
+                    
+            except (APIConnectionError, APITimeoutError, RateLimitError) as e:
+                # Retryable errors
+                last_exception = e
+                logger.warning(f"Retryable error on attempt {attempt + 1}/{max_retries}: {type(e).__name__} - {e}")
+                if attempt == max_retries - 1:
+                    logger.error(f"All {max_retries} retry attempts failed")
+                    raise Exception(f"Failed after {max_retries} attempts: {str(e)}") from e
+                continue
+                
+            except APIError as e:
+                # Non-retryable API errors (e.g., invalid request)
+                logger.error(f"Non-retryable API error: {e}")
+                raise
+                
+            except Exception as e:
+                # Other errors
+                logger.error(f"Error generating workout plan: {e}")
+                raise
+        
+        # Should not reach here, but just in case
+        if last_exception:
+            raise Exception(f"Failed after {max_retries} attempts") from last_exception
+        raise Exception("Unexpected error in retry logic")
     
     def parse_json_response(self, response: str) -> Dict:
         """Extract and parse JSON from LLM response using shared utility.
@@ -233,17 +266,42 @@ Generate the complete workout plan as valid JSON. Remember: ONLY use exercises f
         return parse_llm_json_response(response, save_on_error=True)
     
     def test_connection(self) -> bool:
-        """Test connection to LM Studio server.
+        """Test connection to LLM server.
         
         Returns:
             True if connection successful, False otherwise
         """
         try:
             models = self.client.models.list()
-            logger.info(f"Successfully connected to LM Studio. Available models: {len(models.data)}")
+            logger.info(f"Successfully connected to LLM server. Available models: {len(models.data)}")
             return True
         except Exception as e:
-            logger.error(f"Failed to connect to LM Studio: {e}")
+            logger.error(f"Failed to connect to LLM server: {e}")
             return False
+    
+    def list_models(self) -> List[Dict]:
+        """List available models from the LLM provider.
+        
+        Returns:
+            List of model dictionaries with id, name, and metadata
+            
+        Raises:
+            Exception: If listing models fails
+        """
+        try:
+            response = self.client.models.list()
+            models = []
+            for model in response.data:
+                models.append({
+                    "id": model.id,
+                    "object": model.object,
+                    "created": getattr(model, 'created', None),
+                    "owned_by": getattr(model, 'owned_by', 'unknown')
+                })
+            logger.info(f"Listed {len(models)} models from LLM provider")
+            return models
+        except Exception as e:
+            logger.error(f"Error listing models: {e}")
+            raise
 
 # Made with Bob

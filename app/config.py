@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     api_port: int = 8000
     api_workers: int = 1
     
+    # CORS Configuration
+    allowed_origins: str = "http://localhost:5000,http://localhost:7500"
+    
+    # Frontend Configuration
+    frontend_url: str = "http://localhost:7500"
+    
     # ExerciseDB
     exercisedb_api_url: str = "https://oss.exercisedb.dev/api/v1/exercises"
     exercisedb_page_size: int = 100  # Number of exercises to fetch per page (max: 200)

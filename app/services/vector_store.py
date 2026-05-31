@@ -7,12 +7,17 @@ from functools import lru_cache
 import logging
 import os
 import hashlib
+import threading
 
 logger = logging.getLogger(__name__)
 
 
 class VectorStoreService:
     """Service for managing exercise embeddings in ChromaDB."""
+    
+    # Class-level lock for thread-safe initialization
+    _init_lock = threading.Lock()
+    _initialized_collections = set()
     
     def __init__(self, db_path: str, embedding_model_name: str):
         """Initialize the vector store service.
@@ -85,7 +90,7 @@ Instructions: {instruction_summary}"""
         return doc
     
     async def add_exercises(self, exercises: List[Dict]):
-        """Add exercises to the vector store.
+        """Add exercises to the vector store with thread-safe initialization.
         
         Args:
             exercises: List of exercise dictionaries from ExerciseDB
@@ -93,14 +98,21 @@ Instructions: {instruction_summary}"""
         if self.collection is None:
             raise RuntimeError("Collection not initialized. Call initialize_collection() first.")
         
-        # Check if already populated (with thread-safe check)
-        # Note: This is not fully thread-safe. For production, consider using a lock mechanism
-        # or ChromaDB's upsert functionality with unique IDs
-        if self.collection.count() > 0:
-            logger.info(f"Vector store already contains {self.collection.count()} exercises, skipping...")
-            logger.warning("Note: Vector store initialization is not thread-safe. "
-                          "Ensure only one process initializes the database at a time.")
-            return
+        # Thread-safe check and initialization
+        collection_key = f"{self.db_path}:exercise_embeddings"
+        
+        with self._init_lock:
+            # Double-check if already populated
+            if self.collection.count() > 0:
+                logger.info(f"Vector store already contains {self.collection.count()} exercises, skipping...")
+                return
+            
+            # Mark as being initialized
+            if collection_key in self._initialized_collections:
+                logger.info("Another thread is initializing the collection, skipping...")
+                return
+            
+            self._initialized_collections.add(collection_key)
         
         logger.info(f"Adding {len(exercises)} exercises to vector store...")
         
