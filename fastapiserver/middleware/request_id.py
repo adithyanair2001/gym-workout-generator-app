@@ -4,7 +4,7 @@ Request ID middleware for FastAPI
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
-from fastapi.utils.logging_config import generate_request_id, set_request_id
+from fastapiserver.utils.logging_config import generate_request_id, set_request_id
 import logging
 
 logger = logging.getLogger(__name__)

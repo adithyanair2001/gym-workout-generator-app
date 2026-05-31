@@ -15,18 +15,18 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 # Local application imports
-from fastapi.config import get_settings
-from fastapi.middleware import RequestIDMiddleware
-from fastapi.models.user_profile import UserProfile
-from fastapi.models.workout_plan import WorkoutPlan
-from fastapi.services.database_tools import DatabaseTools
-from fastapi.services.exercisedb_client import ExerciseDBClient
-from fastapi.services.gguf_service import GGUFService
-from fastapi.services.llm_service import LLMService
-from fastapi.services.mlx_agent_service import MLXAgentService
-from fastapi.services.rag_pipeline import RAGPipeline
-from fastapi.services.vector_store import VectorStoreService
-from fastapi.utils.logging_config import RequestIDFilter, setup_structured_logging
+from fastapiserver.config import get_settings
+from fastapiserver.middleware import RequestIDMiddleware
+from fastapiserver.models.user_profile import UserProfile
+from fastapiserver.models.workout_plan import WorkoutPlan
+from fastapiserver.services.database_tools import DatabaseTools
+from fastapiserver.services.exercisedb_client import ExerciseDBClient
+from fastapiserver.services.gguf_service import GGUFService
+from fastapiserver.services.llm_service import LLMService
+from fastapiserver.services.mlx_agent_service import MLXAgentService
+from fastapiserver.services.rag_pipeline import RAGPipeline
+from fastapiserver.services.vector_store import VectorStoreService
+from fastapiserver.utils.logging_config import RequestIDFilter, setup_structured_logging
 
 # Configure structured logging
 settings_for_logging = get_settings()
@@ -335,7 +335,7 @@ async def generate_workout(request: Request, user_profile: UserProfile):
             workout_data = mlx_agent.parse_json_response(raw_response)
             
             # Convert to WorkoutPlan model directly
-            from fastapi.models.workout_plan import WorkoutDay, Exercise
+            from fastapiserver.models.workout_plan import WorkoutDay, Exercise
             
             workout_days = []
             for day_data in workout_data.get('workout_days', []):

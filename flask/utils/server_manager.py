@@ -14,7 +14,7 @@ import atexit
 class ServerManager:
     """Manages the FastAPI backend server lifecycle."""
     
-    def __init__(self, fastapi_url="http://localhost:8000"):
+    def __init__(self, fastapi_url="http://localhost:7501"):
         """
         Initialize the server manager.
         
@@ -76,7 +76,8 @@ class ServerManager:
             
             # Start FastAPI with output visible in terminal
             self.process = subprocess.Popen(
-                [venv_python, '-m', 'uvicorn', 'fastapi.main:app', '--host', '0.0.0.0', '--port', '8000'],
+                [venv_python, '-m', 'uvicorn', 'fastapiserver.main:app',
+                 '--host', '0.0.0.0', '--port', '7501'],
                 cwd=backend_dir,
                 preexec_fn=os.setsid if os.name != 'nt' else None  # Create new process group on Unix
             )

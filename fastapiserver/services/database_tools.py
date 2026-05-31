@@ -3,7 +3,7 @@ import logging
 from typing import List, Dict, Optional
 from langchain.tools import Tool
 from langchain.pydantic_v1 import BaseModel, Field
-from fastapi.services.vector_store import VectorStoreService
+from fastapiserver.services.vector_store import VectorStoreService
 
 logger = logging.getLogger(__name__)
 

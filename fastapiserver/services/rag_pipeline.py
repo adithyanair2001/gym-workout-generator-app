@@ -1,11 +1,11 @@
 """RAG pipeline for workout plan generation."""
 import logging
 from typing import Dict, List, Union
-from fastapi.models.user_profile import UserProfile, WorkoutSplit
-from fastapi.models.workout_plan import WorkoutPlan, WorkoutDay, Exercise
-from fastapi.services.vector_store import VectorStoreService
-from fastapi.services.warmup_cooldown import WarmupCooldownService
-from fastapi.utils.validators import sanitize_user_data_for_logging
+from fastapiserver.models.user_profile import UserProfile, WorkoutSplit
+from fastapiserver.models.workout_plan import WorkoutPlan, WorkoutDay, Exercise
+from fastapiserver.services.vector_store import VectorStoreService
+from fastapiserver.services.warmup_cooldown import WarmupCooldownService
+from fastapiserver.utils.validators import sanitize_user_data_for_logging
 
 logger = logging.getLogger(__name__)
 

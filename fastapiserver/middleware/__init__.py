@@ -1,5 +1,5 @@
 """Middleware package for FastAPI application."""
-from fastapi.middleware.request_id import RequestIDMiddleware
+from fastapiserver.middleware.request_id import RequestIDMiddleware
 
 __all__ = ['RequestIDMiddleware']
 

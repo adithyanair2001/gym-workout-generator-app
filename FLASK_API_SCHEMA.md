@@ -5,8 +5,11 @@ This document describes all API endpoints available in the Flask frontend server
 ## Base URL
 
 ```
-http://localhost:7500
+Flask Frontend: http://localhost:7500
+FastAPI Backend: http://localhost:7501
 ```
+
+**Note:** FastAPI uses port 7501 to avoid conflicts with OMLX server (which uses port 8000).
 
 ## Authentication
 
@@ -649,7 +652,7 @@ The ExerciseDB API has rate limits. The Flask server implements:
 
 CORS is configured to allow requests from:
 - `http://localhost:7500` (Flask frontend)
-- `http://localhost:8000` (FastAPI backend)
+- `http://localhost:7501` (FastAPI backend)
 - Additional origins can be configured via `CORS_ORIGINS` environment variable
 
 ---
@@ -660,14 +663,14 @@ Configure the Flask server using these environment variables:
 
 ```bash
 # FastAPI Backend URL
-FASTAPI_URL=http://localhost:8000
+FASTAPI_URL=http://localhost:7501
 
 # ExerciseDB API Configuration
 EXERCISEDB_API_URL=https://exercisedb.p.rapidapi.com/exercises
 EXERCISEDB_API_KEY=your_api_key_here
 
 # CORS Configuration
-CORS_ORIGINS=http://localhost:7500,http://localhost:8000
+CORS_ORIGINS=http://localhost:7500,http://localhost:7501
 
 # Flask Configuration
 FLASK_ENV=development

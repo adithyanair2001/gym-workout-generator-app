@@ -21,7 +21,7 @@ gym-workout-rag-backend/
 │   ├── static/        # CSS, JS, images
 │   ├── templates/     # HTML templates
 │   └── utils/         # Server manager and utilities
-├── fastapi/           # FastAPI backend application
+├── fastapiserver/     # FastAPI backend application
 │   ├── models/        # Pydantic models
 │   ├── services/      # Business logic and LLM services
 │   ├── middleware/    # Request ID and other middleware
@@ -76,8 +76,8 @@ The application will:
 
 **Access Points:**
 - Flask Frontend UI: **http://localhost:7500**
-- FastAPI Backend API: **http://localhost:8000**
-- API Documentation: **http://localhost:8000/docs**
+- FastAPI Backend API: **http://localhost:7501**
+- API Documentation: **http://localhost:7501/docs**
 
 ## 🎯 LLM Deployment Options
 
@@ -97,6 +97,8 @@ MLX_MODEL_PATH=/path/to/mlx-community/Qwen3.5-4B-MLX-4bit
 **Best for**: Mac users wanting OpenAI-compatible API
 
 ```bash
+**Note:** OMLX uses port 8000 by default. Our FastAPI server uses port 7501 to avoid conflicts.
+
 # Install and run
 pip install omlx
 omlx serve --model mlx-community/Qwen3.5-4B-MLX-4bit --port 8000

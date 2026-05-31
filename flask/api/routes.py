@@ -10,7 +10,7 @@ from . import api_bp
 from utils.validators import validate_user_profile, sanitize_string, sanitize_list_field
 
 # Configuration - Use environment variable with fallback
-FASTAPI_URL = os.getenv("FASTAPI_URL", "http://localhost:8000")
+FASTAPI_URL = os.getenv("FASTAPI_URL", "http://localhost:7501")
 
 
 @api_bp.route('/validate-model', methods=['POST'])

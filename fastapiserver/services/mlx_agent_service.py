@@ -7,10 +7,10 @@ from typing import Dict, List, Optional
 import mlx.core as mx
 from mlx_lm import generate, load
 
-from fastapi.models.user_profile import UserProfile
-from fastapi.services.database_tools import DatabaseTools
-from fastapi.utils.json_parser import parse_llm_json_response
-from fastapi.utils.validators import (
+from fastapiserver.models.user_profile import UserProfile
+from fastapiserver.services.database_tools import DatabaseTools
+from fastapiserver.utils.json_parser import parse_llm_json_response
+from fastapiserver.utils.validators import (
     validate_n_results,
     validate_exercise_id,
     sanitize_query_string,

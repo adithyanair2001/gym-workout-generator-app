@@ -3,7 +3,10 @@ Flask Frontend for Gym Workout RAG System
 Modern, scalable architecture with blueprints
 """
 
-from flask import Flask, render_template
+import signal
+import sys
+
+from flask import Flask, render_template, send_from_directory
 from api import api_bp
 from api.exercisedb_routes import exercisedb_bp
 from utils import ServerManager
@@ -41,6 +44,15 @@ def create_app():
             "version": "2.0.0"
         }
     
+    @app.route('/favicon.ico')
+    def favicon():
+        """Serve favicon."""
+        return send_from_directory(
+            app.root_path + '/static',
+            'favicon.svg',
+            mimetype='image/svg+xml'
+        )
+    
     return app
 
 
@@ -52,6 +64,18 @@ def main():
     
     # Initialize server manager
     server_manager = ServerManager()
+    
+    # Setup signal handlers for graceful shutdown
+    def signal_handler(sig, frame):
+        """Handle shutdown signals."""
+        print("\n\n🛑 Received shutdown signal, stopping servers...")
+        server_manager.stop_server()
+        print("✅ Shutdown complete")
+        sys.exit(0)
+    
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+    signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
     
     # Start FastAPI backend
     server_manager.start_server()
@@ -68,10 +92,13 @@ def main():
     
     try:
         app.run(debug=True, port=7500, use_reloader=False)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         print("\n\n🛑 Shutting down servers...")
         server_manager.stop_server()
         print("✅ Shutdown complete")
+    finally:
+        # Ensure cleanup happens
+        server_manager.stop_server()
 
 
 if __name__ == '__main__':

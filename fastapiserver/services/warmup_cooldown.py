@@ -2,7 +2,7 @@
 Warm-up and cool-down exercise generation service
 """
 from typing import List, Dict
-from fastapi.models.workout_plan import Exercise
+from fastapiserver.models.workout_plan import Exercise
 
 
 class WarmupCooldownService:
