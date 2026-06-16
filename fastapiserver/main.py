@@ -326,76 +326,93 @@ async def generate_workout(request: Request, workout_request: WorkoutGenerationR
                 detail="Vector store not initialized. Please try again later."
             )
         
-        # Create appropriate service using factory
+        # Create appropriate service using factory (disable caching for auto-cleanup)
         service = ServiceFactory.create_service(
             model_config=llm_config,
             vector_store=vector_store,
-            use_cache=True
+            use_cache=False  # Disable caching to allow cleanup after each request
         )
         
-        # Determine if this is an MLX agent or RAG pipeline
-        if isinstance(service, MLXAgentService):
-            logger.info("Generating workout plan with MLX agent...")
-            # Generate with MLX agent
-            raw_response = service.generate_workout_plan(user_profile)
-            
-            # Parse JSON response
-            workout_data = service.parse_json_response(raw_response)
-            
-            # Convert to WorkoutPlan model directly
-            from fastapiserver.models.workout_plan import WorkoutDay, Exercise
-            
-            workout_days = []
-            for day_data in workout_data.get('workout_days', []):
-                main_workout = []
-                for ex_data in day_data.get('main_workout', []):
-                    exercise = Exercise(
-                        exercise_id=ex_data.get('exercise_id', ''),
-                        name=ex_data.get('name', ''),
-                        target_muscles=ex_data.get('target_muscles', []),
-                        sets=ex_data.get('sets', 3),
-                        reps=ex_data.get('reps', '8-12'),
-                        rest_seconds=ex_data.get('rest_seconds', 60),
-                        gif_url=ex_data.get('gif_url', ''),
-                        instructions=ex_data.get('instructions', []),
-                        notes=ex_data.get('notes')
-                    )
-                    main_workout.append(exercise)
+        try:
+            # Determine if this is an MLX agent or RAG pipeline
+            if isinstance(service, MLXAgentService):
+                logger.info("Generating workout plan with MLX agent...")
+                # Generate with MLX agent
+                raw_response = service.generate_workout_plan(user_profile)
                 
-                workout_day = WorkoutDay(
-                    day_number=day_data.get('day_number', 1),
-                    day_name=day_data.get('day_name', f"Day {day_data.get('day_number', 1)}"),
-                    focus=day_data.get('focus', 'Full Body'),
-                    warm_up=[],
-                    main_workout=main_workout,
-                    cool_down=[],
-                    estimated_duration_minutes=day_data.get('estimated_duration_minutes', user_profile.workout_duration_minutes),
-                    total_exercises=len(main_workout)
+                # Parse JSON response
+                workout_data = service.parse_json_response(raw_response)
+                
+                # Convert to WorkoutPlan model in custom format
+                from fastapiserver.models.workout_plan import WorkoutDay, Exercise
+                
+                workout_groups = []
+                for day_data in workout_data.get('workout_days', []):
+                    selected_exercises = []
+                    for ex_data in day_data.get('main_workout', []):
+                        # Format instructions with $$ separator
+                        instructions = ex_data.get('instructions', [])
+                        if isinstance(instructions, list):
+                            description = " $$ ".join(instructions)
+                        else:
+                            description = str(instructions)
+                        
+                        # Get target muscles
+                        target_muscles = ex_data.get('target_muscles', [])
+                        if isinstance(target_muscles, list):
+                            target_muscles_str = target_muscles[0] if target_muscles else ''
+                        else:
+                            target_muscles_str = str(target_muscles)
+                        
+                        exercise = Exercise(
+                            exerciseDbId=ex_data.get('exercise_id', ''),
+                            exerciseName=ex_data.get('name', ''),
+                            bodyPart='Unknown',  # Will be filled by RAG pipeline
+                            equipments='Unknown',  # Will be filled by RAG pipeline
+                            targetMuscles=target_muscles_str,
+                            secondaryMuscles='',
+                            mediaUrl=ex_data.get('gif_url', ''),
+                            description=description
+                        )
+                        selected_exercises.append(exercise)
+                    
+                    workout_group = WorkoutDay(
+                        groupName=day_data.get('day_name', f"Day {day_data.get('day_number', 1)}"),
+                        isAiGenerated=True,
+                        selectedExercises=selected_exercises
+                    )
+                    workout_groups.append(workout_group)
+                
+                workout_plan = WorkoutPlan(
+                    workoutGroups=workout_groups
                 )
-                workout_days.append(workout_day)
+            else:
+                logger.info("Generating workout plan with RAG pipeline...")
+                # Create RAG pipeline with the service
+                pipeline = RAGPipeline(vector_store, service)
+                # Generate workout plan with traditional RAG
+                workout_plan = await pipeline.generate_workout_plan(user_profile)
             
-            workout_plan = WorkoutPlan(
-                user_profile_summary={
-                    "age": user_profile.age,
-                    "gender": user_profile.gender,
-                    "fitness_level": user_profile.fitness_level.value,
-                    "goals": [g.value for g in user_profile.goals],
-                    "days_per_week": user_profile.gym_days_per_week
-                },
-                days_per_week=user_profile.gym_days_per_week,
-                workout_days=workout_days,
-                progression_notes=workout_data.get('progression_notes', 'Increase weight gradually as you get stronger'),
-                nutrition_tips=workout_data.get('nutrition_tips')
-            )
-        else:
-            logger.info("Generating workout plan with RAG pipeline...")
-            # Create RAG pipeline with the service
-            pipeline = RAGPipeline(vector_store, service)
-            # Generate workout plan with traditional RAG
-            workout_plan = await pipeline.generate_workout_plan(user_profile)
-        
-        logger.info(f"Successfully generated workout plan with {len(workout_plan.workout_days)} days")
-        return workout_plan
+            logger.info(f"Successfully generated workout plan with {len(workout_plan.workoutGroups)} workout groups")
+            return workout_plan
+            
+        finally:
+            # Cleanup: Unload model after generation is complete
+            if isinstance(service, MLXAgentService):
+                logger.info("Cleaning up MLX model from memory...")
+                service.cleanup()
+                logger.info("✓ MLX model unloaded successfully")
+            elif isinstance(service, GGUFService):
+                logger.info("Cleaning up GGUF model from memory...")
+                # GGUF models are managed by llama-cpp-python, cleanup happens automatically
+                # But we can explicitly delete the reference to help garbage collection
+                del service
+                import gc
+                gc.collect()
+                logger.info("✓ GGUF model reference cleared")
+            else:
+                # For API-based services, no cleanup needed (no local model loaded)
+                logger.info("✓ API-based service, no model cleanup needed")
         
     except ValueError as e:
         logger.error(f"Validation error: {e}")

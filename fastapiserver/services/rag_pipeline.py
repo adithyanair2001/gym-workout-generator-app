@@ -214,22 +214,42 @@ Suitable for {user_profile.gym_days_per_week} days per week training with {user_
                         exercise_info = exercise_lookup[ex_id]
                         meta = exercise_info.get('metadata', {})
                         
-                        # Validate and correct rest_seconds (must be >= 30)
-                        rest_seconds = ex_data.get('rest_seconds', 60)
-                        if rest_seconds < 30:
-                            logger.warning(f"Exercise {ex_id} has invalid rest_seconds={rest_seconds}, correcting to 60")
-                            rest_seconds = 60
+                        # Format instructions with $$ separator
+                        instructions = ex_data.get('instructions', [])
+                        if isinstance(instructions, list):
+                            description = " $$ ".join(instructions)
+                        else:
+                            description = str(instructions)
+                        
+                        # Add notes if present
+                        notes = ex_data.get('notes')
+                        if notes:
+                            description = f"{description} $$ {notes}"
+                        
+                        # Get target muscles
+                        target_muscles = ex_data.get('target_muscles', meta.get('target_muscles', '').split(','))
+                        if isinstance(target_muscles, list):
+                            target_muscles_str = target_muscles[0] if target_muscles else ''
+                            secondary_muscles_str = ','.join(target_muscles[1:]) if len(target_muscles) > 1 else ''
+                        else:
+                            target_muscles_str = str(target_muscles)
+                            secondary_muscles_str = ''
+                        
+                        # Get equipment
+                        equipment = meta.get('equipment', 'Unknown')
+                        
+                        # Get body part
+                        body_part = meta.get('body_part', 'Unknown')
                         
                         exercise = Exercise(
-                            exercise_id=ex_id,
-                            name=ex_data.get('name', meta.get('name', '')),
-                            target_muscles=ex_data.get('target_muscles', meta.get('target_muscles', '').split(',')),
-                            sets=ex_data.get('sets', 3),
-                            reps=ex_data.get('reps', '8-12'),
-                            rest_seconds=rest_seconds,
-                            gif_url=meta.get('gif_url', ''),
-                            instructions=ex_data.get('instructions', []),
-                            notes=ex_data.get('notes')
+                            exerciseDbId=ex_id,
+                            exerciseName=ex_data.get('name', meta.get('name', '')),
+                            bodyPart=body_part,
+                            equipments=equipment,
+                            targetMuscles=target_muscles_str,
+                            secondaryMuscles=secondary_muscles_str,
+                            mediaUrl=meta.get('gif_url', ''),
+                            description=description
                         )
                         main_workout.append(exercise)
                     else:
@@ -248,31 +268,19 @@ Suitable for {user_profile.gym_days_per_week} days per week training with {user_
                 # Update total exercises count
                 total_exercises = len(main_workout) + len(warm_up) + len(cool_down)
                 
+                # Combine all exercises for this workout day
+                all_exercises = warm_up + main_workout + cool_down
+                
                 workout_day = WorkoutDay(
-                    day_number=day_data.get('day_number', 1),
-                    day_name=day_data.get('day_name', f"Day {day_data.get('day_number', 1)}"),
-                    focus=focus,
-                    warm_up=warm_up,
-                    main_workout=main_workout,
-                    cool_down=cool_down,
-                    estimated_duration_minutes=day_data.get('estimated_duration_minutes', user_profile.workout_duration_minutes),
-                    total_exercises=total_exercises
+                    groupName=day_data.get('day_name', f"Day {day_data.get('day_number', 1)}"),
+                    isAiGenerated=True,
+                    selectedExercises=all_exercises
                 )
                 workout_days.append(workout_day)
             
-            # Create workout plan
+            # Create workout plan in custom format
             workout_plan = WorkoutPlan(
-                user_profile_summary={
-                    "age": user_profile.age,
-                    "gender": user_profile.gender,
-                    "fitness_level": user_profile.fitness_level.value,
-                    "goals": [g.value for g in user_profile.goals],
-                    "days_per_week": user_profile.gym_days_per_week
-                },
-                days_per_week=user_profile.gym_days_per_week,
-                workout_days=workout_days,
-                progression_notes=llm_response.get('progression_notes', 'Increase weight gradually as you get stronger'),
-                nutrition_tips=llm_response.get('nutrition_tips')
+                workoutGroups=workout_days
             )
             
             return workout_plan

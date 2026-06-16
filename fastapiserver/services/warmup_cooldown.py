@@ -119,16 +119,19 @@ class WarmupCooldownService:
         for name in selected:
             warmup_ex = next((ex for ex in self.WARMUP_EXERCISES if ex["name"] == name), None)
             if warmup_ex:
+                # Format instructions with $$ separator
+                instructions_text = " $$ ".join(warmup_ex["instructions"])
+                duration_or_reps = f"{warmup_ex.get('duration_seconds', 30)}s" if "duration_seconds" in warmup_ex else f"{warmup_ex.get('reps', 10)} reps"
+                
                 exercise = Exercise(
-                    exercise_id=f"warmup_{name.lower().replace(' ', '_')}",
-                    name=warmup_ex["name"],
-                    target_muscles=["dynamic_warmup"],
-                    sets=1,
-                    reps=f"{warmup_ex.get('duration_seconds', 30)}s" if "duration_seconds" in warmup_ex else str(warmup_ex.get('reps', 10)),
-                    rest_seconds=30,  # Minimum rest between warm-up exercises
-                    gif_url="",
-                    instructions=warmup_ex["instructions"],
-                    notes="Perform at moderate intensity to increase heart rate and blood flow"
+                    exerciseDbId=f"warmup_{name.lower().replace(' ', '_')}",
+                    exerciseName=warmup_ex["name"],
+                    bodyPart="warmup",
+                    equipments="body weight",
+                    targetMuscles="dynamic_warmup",
+                    secondaryMuscles="",
+                    mediaUrl="",
+                    description=f"{instructions_text} $$ Perform at moderate intensity to increase heart rate and blood flow $$ Duration: {duration_or_reps}"
                 )
                 exercises.append(exercise)
         
@@ -157,16 +160,19 @@ class WarmupCooldownService:
         for name in selected:
             cooldown_ex = next((ex for ex in self.COOLDOWN_EXERCISES if ex["name"] == name), None)
             if cooldown_ex:
+                # Format instructions with $$ separator
+                instructions_text = " $$ ".join(cooldown_ex["instructions"])
+                duration = f"{cooldown_ex['duration_seconds']}s"
+                
                 exercise = Exercise(
-                    exercise_id=f"cooldown_{name.lower().replace(' ', '_')}",
-                    name=cooldown_ex["name"],
-                    target_muscles=["static_stretch"],
-                    sets=1,
-                    reps=f"{cooldown_ex['duration_seconds']}s",
-                    rest_seconds=30,  # Minimum rest between cool-down stretches
-                    gif_url="",
-                    instructions=cooldown_ex["instructions"],
-                    notes="Hold each stretch without bouncing. Breathe deeply and relax into the stretch."
+                    exerciseDbId=f"cooldown_{name.lower().replace(' ', '_')}",
+                    exerciseName=cooldown_ex["name"],
+                    bodyPart="cooldown",
+                    equipments="body weight",
+                    targetMuscles="static_stretch",
+                    secondaryMuscles="",
+                    mediaUrl="",
+                    description=f"{instructions_text} $$ Hold each stretch without bouncing. Breathe deeply and relax into the stretch $$ Duration: {duration}"
                 )
                 exercises.append(exercise)
         

@@ -21,7 +21,7 @@ class LLMService:
     - Public APIs (OpenAI, Anthropic, Groq, etc.)
     """
     
-    def __init__(self, base_url: str, model: str, api_key: str = "", temperature: float = 0.7, max_tokens: int = 2000):
+    def __init__(self, base_url: str, model: str, api_key: str = "", temperature: float = 0.7, max_tokens: int = 32000):
         """Initialize the LLM service.
         
         Args:
@@ -39,7 +39,7 @@ class LLMService:
                 - Groq: 'llama-3.3-70b-versatile', etc.
             api_key: API key for public services (optional for local servers)
             temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
+            max_tokens: Maximum tokens to generate (default: 32000 for complete workout plans)
         """
         self.base_url = base_url
         self.model = model

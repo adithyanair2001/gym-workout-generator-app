@@ -20,7 +20,7 @@ class GGUFService:
         n_ctx: int = 4096,
         n_gpu_layers: int = 0,
         temperature: float = 0.7,
-        max_tokens: int = 2000
+        max_tokens: int = 32000
     ):
         """Initialize the GGUF service.
         
