@@ -125,15 +125,17 @@ class LLMService:
 
 CRITICAL RULES - READ CAREFULLY:
 1. Use ONLY exercises from the provided list below - DO NOT suggest any exercises not in the list
-2. Your response MUST contain ONLY the JSON workout plan - NO explanations, NO markdown, NO additional text
-3. Do NOT wrap the JSON in code blocks or markdown formatting
-4. Output raw JSON only, starting with {{ and ending with }}
-5. Do NOT invent or suggest exercises not in the provided list
-6. Consider user's fitness level when assigning sets/reps
-7. Balance muscle groups across the week
-8. Include warm-up (5-10 min) and cool-down (5 min) exercises
-9. Ensure total workout duration matches user's available time
-10. IMPORTANT: Generate exactly {user_profile.gym_days_per_week} workout days in the workout_days array
+2. **CRITICAL**: When selecting an exercise, you MUST use the EXACT exercise ID shown in the list (e.g., "EIeI8Vf", "ABC123X")
+3. DO NOT create your own exercise IDs - copy the ID exactly as shown in parentheses after each exercise name
+4. Your response MUST contain ONLY the JSON workout plan - NO explanations, NO markdown, NO additional text
+5. Do NOT wrap the JSON in code blocks or markdown formatting
+6. Output raw JSON only, starting with {{ and ending with }}
+7. Do NOT invent or suggest exercises not in the provided list
+8. Consider user's fitness level when assigning sets/reps
+9. Balance muscle groups across the week
+10. Include warm-up (5-10 min) and cool-down (5 min) exercises
+11. Ensure total workout duration matches user's available time
+12. IMPORTANT: Generate exactly {user_profile.gym_days_per_week} workout days in the workout_days array
 
 USER PROFILE:
 - Age: {user_profile.age}, Gender: {user_profile.gender}
@@ -169,7 +171,7 @@ OUTPUT JSON SCHEMA (Example showing structure - YOU MUST GENERATE {user_profile.
       "warm_up": [],
       "main_workout": [
         {{
-          "exercise_id": "0001",
+          "exercise_id": "EIeI8Vf",
           "name": "barbell bench press",
           "target_muscles": ["pectorals"],
           "sets": 4,
@@ -188,7 +190,7 @@ OUTPUT JSON SCHEMA (Example showing structure - YOU MUST GENERATE {user_profile.
       "warm_up": [],
       "main_workout": [
         {{
-          "exercise_id": "0002",
+          "exercise_id": "ABC123X",
           "name": "barbell squat",
           "target_muscles": ["quadriceps"],
           "sets": 4,
