@@ -335,7 +335,77 @@ The Flask server also provides proxy endpoints to access ExerciseDB:
 
 This project is licensed under the MIT License.
 
-## 📜 Changelog
+## 📋 API Response Format
+
+### Custom Workout Plan Format (Android App Compatible)
+
+The API returns workout plans in a custom format designed for Android app integration:
+
+```json
+{
+  "workoutGroups": [
+    {
+      "groupName": "Day 1: Upper Body Push",
+      "isAiGenerated": true,
+      "selectedExercises": [
+        {
+          "exerciseDbId": "EIeI8Vf",
+          "exerciseName": "barbell bench press",
+          "bodyPart": "Chest",
+          "equipments": "Barbell",
+          "targetMuscles": "pectorals",
+          "secondaryMuscles": "shoulders,Triceps",
+          "mediaUrl": "https://static.exercisedb.dev/media/EIeI8Vf.gif",
+          "description": "Lie flat on a bench with your feet flat on the ground. $$ Grip the barbell slightly wider than shoulder-width apart. $$ Lower bar to chest with control. $$ Press bar back up to starting position."
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Key Features:**
+- **workoutGroups**: Array of workout days/groups
+- **selectedExercises**: Array of exercises for each group
+- **description**: Exercise instructions separated by `$$` for easy parsing
+- **Complete metadata**: Body part, equipment, target/secondary muscles, media URL
+
+**Implementation Details:**
+- Pydantic models in [`fastapiserver/models/workout_plan.py`](fastapiserver/models/workout_plan.py)
+- RAG pipeline post-processing in [`fastapiserver/services/rag_pipeline.py`](fastapiserver/services/rag_pipeline.py)
+- Automatic warmup/cooldown generation with custom format
+- Frontend JavaScript handles both old and new formats for backward compatibility
+
+## � Changelog
+
+### Version 2.2.0 (2026-06-16) - Custom Format & Auto-Cleanup
+
+#### 🎯 API Response Format Changes
+- **Custom Format**: Complete overhaul to match Android app requirements
+  - Changed `workout_days` → `workoutGroups`
+  - Changed `exercises` → `selectedExercises`
+  - Added `isAiGenerated` flag to workout groups
+  - Exercise fields: `exerciseDbId`, `exerciseName`, `bodyPart`, `equipments`, `targetMuscles`, `secondaryMuscles`, `mediaUrl`, `description`
+  - Instructions formatted with `$$` separator for easy parsing
+
+#### 🧹 Memory Management
+- **Automatic Model Cleanup**: Models are automatically unloaded after each workout generation
+- **Resource Optimization**: Prevents memory leaks and reduces RAM usage
+- **Service Factory**: Caching disabled for workout generation to enable cleanup
+
+#### 🔧 Code Improvements
+- Updated Pydantic models to match custom format
+- Enhanced RAG pipeline post-processing for format conversion
+- Updated warmup/cooldown services to generate custom format
+- Frontend JavaScript updated to handle both old and new formats
+- Improved error handling and validation
+
+#### 📁 Files Modified
+- `fastapiserver/models/workout_plan.py` - New custom format models
+- `fastapiserver/services/rag_pipeline.py` - Format conversion in post_process_response
+- `fastapiserver/services/warmup_cooldown.py` - Custom format generation
+- `fastapiserver/main.py` - Automatic model cleanup after generation
+- `flask/static/js/app.js` - Backward-compatible format handling
 
 ### Version 2.1.0 (2026-05-31) - Enterprise-Grade Improvements
 
@@ -411,6 +481,6 @@ This project is licensed under the MIT License.
 
 ---
 
-**Version**: 2.1.0
-**Last Updated**: 2026-05-31
+**Version**: 2.2.0
+**Last Updated**: 2026-06-16
 **Status**: Production Ready ✅

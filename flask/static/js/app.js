@@ -492,48 +492,76 @@ const UI = {
     },
     
     /**
-     * Display workout plan
+     * Display workout plan - Updated for new custom format
      */
     displayWorkoutPlan(plan) {
         let html = '<div class="workout-plan">';
-        html += `<h3>${plan.days_per_week}-Day Workout Plan</h3>`;
-        html += `<p>${plan.plan_duration_weeks} weeks program</p>`;
         
-        plan.workout_days.forEach(day => {
+        // Check if we have workoutGroups (new format)
+        const workoutGroups = plan.workoutGroups || plan.workout_days || [];
+        
+        if (workoutGroups.length === 0) {
+            html += '<p>No workout groups found in the plan.</p>';
+            html += '</div>';
+            DOM.outputArea.innerHTML = html;
+            return;
+        }
+        
+        html += `<h3>${workoutGroups.length}-Day Workout Plan</h3>`;
+        
+        workoutGroups.forEach((group, index) => {
+            // Support both old and new format
+            const groupName = group.groupName || group.day_name || `Day ${index + 1}`;
+            const exercises = group.selectedExercises || group.main_workout || [];
+            
             html += `
                 <div class="workout-day">
-                    <h3>${this.escapeHtml(day.day_name)}</h3>
-                    <p><strong>Focus:</strong> ${this.escapeHtml(day.focus)}</p>
-                    <p><strong>Duration:</strong> ~${day.estimated_duration_minutes} minutes</p>
+                    <h3>${this.escapeHtml(groupName)}</h3>
+                    <p><strong>Total Exercises:</strong> ${exercises.length}</p>
                     
-                    <h4>Main Workout:</h4>
+                    <h4>Exercises:</h4>
             `;
             
-            day.main_workout.forEach(exercise => {
-                const targetMuscles = exercise.target_muscles.map(m => this.escapeHtml(m)).join(', ');
+            exercises.forEach(exercise => {
+                // Support both old and new format
+                const exerciseName = exercise.exerciseName || exercise.name || 'Unknown Exercise';
+                const targetMuscles = exercise.targetMuscles || (exercise.target_muscles ? exercise.target_muscles.join(', ') : 'N/A');
+                const bodyPart = exercise.bodyPart || 'N/A';
+                const equipment = exercise.equipments || 'N/A';
+                
+                // Parse description for instructions
+                const description = exercise.description || '';
+                const instructions = description.split('$$').map(s => s.trim()).filter(s => s);
+                
                 html += `
                     <div class="exercise">
-                        <div class="exercise-name">${this.escapeHtml(exercise.name)}</div>
+                        <div class="exercise-name">${this.escapeHtml(exerciseName)}</div>
                         <div class="exercise-details">
-                            <span>📊 ${exercise.sets} sets × ${exercise.reps} reps</span>
-                            <span>⏱️ Rest: ${exercise.rest_seconds}s</span>
-                            <span>🎯 ${targetMuscles}</span>
+                            <span>🎯 ${this.escapeHtml(targetMuscles)}</span>
+                            <span>💪 ${this.escapeHtml(bodyPart)}</span>
+                            <span>🏋️ ${this.escapeHtml(equipment)}</span>
                         </div>
-                    </div>
                 `;
+                
+                // Show instructions if available
+                if (instructions.length > 0) {
+                    html += '<div class="exercise-instructions"><strong>Instructions:</strong><ol>';
+                    instructions.forEach(instruction => {
+                        html += `<li>${this.escapeHtml(instruction)}</li>`;
+                    });
+                    html += '</ol></div>';
+                }
+                
+                // Show media if available
+                if (exercise.mediaUrl) {
+                    html += `<div class="exercise-media"><img src="${this.escapeHtml(exercise.mediaUrl)}" alt="${this.escapeHtml(exerciseName)}" style="max-width: 200px; border-radius: 8px;"></div>`;
+                }
+                
+                html += '</div>';
             });
             
             html += '</div>';
         });
-        
-        if (plan.progression_notes) {
-            html += `
-                <div class="alert alert-success" style="margin-top: 25px;">
-                    <strong>📈 Progression Notes:</strong><br>
-                    ${this.escapeHtml(plan.progression_notes)}
-                </div>
-            `;
-        }
         
         html += '</div>';
         DOM.outputArea.innerHTML = html;
