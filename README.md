@@ -27,7 +27,8 @@ gym-workout-rag-backend/
 │   ├── middleware/    # Request ID and other middleware
 │   └── utils/         # Utilities and validators
 ├── data/              # Vector database storage
-└── run_frontend.sh    # Startup script
+├── run_frontend.sh    # Startup script (Linux/Mac)
+└── run_frontend.bat   # Startup script (Windows)
 ```
 
 ## 🚀 Quick Start
@@ -35,7 +36,9 @@ gym-workout-rag-backend/
 ### Prerequisites
 
 - Python 3.9+
-- macOS (for MLX models) or any OS (for other options)
+- **Windows**: Visual C++ Build Tools OR use FAISS instead of ChromaDB (see Windows Setup below)
+- **macOS**: For MLX models (Apple Silicon only)
+- **Linux**: All features supported
 - 8GB+ RAM recommended
 
 ### Installation
@@ -47,25 +50,65 @@ cd gym-workout-rag-backend
 ```
 
 2. **Create virtual environment**:
+
+**Linux/Mac:**
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
+```
+
+**Windows:**
+```cmd
+python -m venv venv
+venv\Scripts\activate
 ```
 
 3. **Install dependencies**:
+
+**Linux/Mac:**
 ```bash
 pip install -r requirements.txt
 ```
 
+**Windows (if ChromaDB fails):**
+```cmd
+# Option 1: Install Visual C++ Build Tools first, then:
+pip install -r requirements.txt
+
+# Option 2: Use FAISS instead (no C++ needed):
+pip install faiss-cpu
+pip install -r requirements.txt --no-deps chromadb
+```
+
 4. **Configure environment**:
+
+**Linux/Mac:**
 ```bash
 cp .env.example .env
 # Edit .env with your preferred settings
 ```
 
+**Windows:**
+```cmd
+copy .env.example .env
+notepad .env
+```
+
+**Important for Windows users:**
+- Set `USE_MLX=false` (MLX is Mac-only)
+- Use forward slashes in paths: `C:/path/to/file`
+- Choose GGUF, LM Studio, or cloud APIs for LLM
+
 5. **Run the application**:
+
+**Linux/Mac:**
 ```bash
 bash run_frontend.sh
+```
+
+**Windows:**
+```cmd
+run_frontend.bat
 ```
 
 The application will:
@@ -267,30 +310,204 @@ bash run_frontend.sh
 
 ## 🐛 Troubleshooting
 
-### Backend won't start
+### LM Studio Issues
+
+#### HTTP 503 Error (Service Unavailable)
+**Problem:** Getting 503 errors when trying to connect to LM Studio
+
+**Solutions:**
+1. **Ensure LM Studio Server is Running:**
+   - Open LM Studio application
+   - Go to "Local Server" tab (left sidebar)
+   - Click "Start Server" button
+   - Wait for "Server running on port 1234" message
+   - Verify server status shows green/active
+
+2. **Check Model is Loaded:**
+   - In LM Studio, go to "Local Server" tab
+   - Under "Select a model to load", choose your model
+   - Click "Load Model" and wait for it to finish loading
+   - Model must be loaded BEFORE making API requests
+
+3. **Verify Port and URL:**
+   ```env
+   # In .env file
+   LLM_BASE_URL=http://127.0.0.1:1234/v1
+   LLM_MODEL=local-model
+   ```
+   - Default LM Studio port is 1234
+   - Use `127.0.0.1` not `localhost` (more reliable)
+
+4. **Test Connection:**
+   ```bash
+   # Test if server is responding
+   curl http://127.0.0.1:1234/v1/models
+   ```
+   Should return list of loaded models.
+
+5. **Check Firewall:**
+   - Windows Firewall might be blocking the connection
+   - Allow LM Studio through Windows Firewall
+   - Or temporarily disable firewall to test
+
+#### Model Not Listed / Cannot Select Model
+**Problem:** No models appear in LM Studio or model selection doesn't work
+
+**Solutions:**
+1. **Download Models First:**
+   - In LM Studio, go to "Discover" tab (🔍 icon)
+   - Search for models (e.g., "Llama 3.2 3B", "Qwen 2.5 4B")
+   - Click download button
+   - Wait for download to complete
+
+2. **Model Name in .env:**
+   - LM Studio doesn't require exact model name
+   - Use generic name: `LLM_MODEL=local-model`
+   - Or use the model's display name from LM Studio
+
+3. **Recommended Models for LM Studio:**
+   - **Llama 3.2 3B Instruct** (2GB) - Fast, good quality
+   - **Qwen 2.5 4B Instruct** (2.5GB) - Better quality
+   - **Phi-3 Mini** (2.3GB) - Microsoft, good for instructions
+   - Avoid models >7B unless you have 16GB+ RAM
+
+#### Connection Timeout
+**Problem:** Requests timeout when generating workouts
+
+**Solutions:**
+1. **Increase Timeout in Frontend:**
+   - Edit `flask/static/js/app.js`
+   - Find `timeout` setting (usually 60000ms)
+   - Increase to 120000ms (2 minutes) or more
+
+2. **Use Smaller Model:**
+   - Larger models (7B+) are slower
+   - Switch to 3B-4B models for faster generation
+
+3. **Reduce Context Length:**
+   - In LM Studio settings, reduce "Context Length"
+   - Try 2048 or 4096 instead of 8192+
+
+### Windows-Specific Issues
+
+#### ChromaDB Installation Fails
+**Error:** `Microsoft Visual C++ 14.0 or greater is required`
+
+**Solutions:**
+1. **Install Visual C++ Build Tools** (Recommended)
+   - Download: [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+   - Select "Desktop development with C++"
+   - Requires ~7GB disk space
+
+2. **Use Pre-built Wheel:**
+   ```cmd
+   pip install --only-binary :all: chromadb
+   ```
+
+3. **Switch to FAISS** (No C++ needed):
+   ```cmd
+   pip install faiss-cpu
+   ```
+   Then modify `fastapiserver/services/vector_store.py` to use FAISS instead of ChromaDB.
+
+#### Port Already in Use (Windows)
+```cmd
+# Check what's using the port
+netstat -ano | findstr :7501
+
+# Kill process (replace PID)
+taskkill /PID <PID> /F
+```
+
+#### Path Issues (Windows)
+Use forward slashes or double backslashes in `.env`:
+```env
+# Good
+GGUF_MODEL_PATH=C:/Users/YourName/models/model.gguf
+
+# Also good
+GGUF_MODEL_PATH=C:\\Users\\YourName\\models\\model.gguf
+
+# Bad
+GGUF_MODEL_PATH=C:\Users\YourName\models\model.gguf
+```
+
+### General Issues
+
+#### Backend won't start
+**Linux/Mac:**
 ```bash
-# Check if port 8000 is available
-lsof -i :8000
+# Check if port is available
+lsof -i :7501
 kill -9 <PID>
 ```
 
-### Frontend connection error
-```bash
-# Verify backend is running
-curl http://localhost:8000/health
+**Windows:**
+```cmd
+netstat -ano | findstr :7501
+taskkill /PID <PID> /F
 ```
 
-### Slow generation
-- Use smaller model (e.g., 4B instead of 9B)
-- Try LM Studio or public APIs
-- Increase timeout in frontend
+#### Frontend connection error
+```bash
+# Verify backend is running
+curl http://localhost:7501/health
+```
 
-### Vector DB issues
+#### Slow generation
+- Use smaller model (e.g., 3B-4B instead of 9B+)
+- Try LM Studio or public APIs
+- For GGUF on Windows: Enable GPU acceleration (NVIDIA only)
+  ```cmd
+  pip uninstall llama-cpp-python
+  pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
+  ```
+- Increase `GGUF_N_GPU_LAYERS` in `.env` (e.g., 30)
+
+#### Vector DB issues
+**Linux/Mac:**
 ```bash
 # Clear and rebuild
 rm -rf data/chroma_db/
 # Restart application (will refetch exercises)
 ```
+
+**Windows:**
+```cmd
+rmdir /s /q data\chroma_db
+REM Restart application (will refetch exercises)
+```
+
+### ChromaDB Alternatives for Windows
+
+If ChromaDB continues to cause issues, consider these alternatives:
+
+1. **FAISS** (Recommended)
+   - No C++ compilation needed
+   - Faster than ChromaDB
+   - Pre-built Windows wheels
+   ```cmd
+   pip install faiss-cpu
+   ```
+
+2. **Qdrant** (Docker-based)
+   - No compilation needed
+   - Better for production
+   ```cmd
+   docker run -p 6333:6333 qdrant/qdrant
+   ```
+
+3. **Pinecone** (Cloud, Managed)
+   - No local setup
+   - Free tier available
+   - Best for production
+
+4. **Weaviate** (Docker-based)
+   - No compilation needed
+   - GraphQL API
+   ```cmd
+   docker run -p 8080:8080 semitechnologies/weaviate
+   ```
 
 ## 📚 API Documentation
 
