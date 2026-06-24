@@ -394,7 +394,50 @@ async def generate_workout(request: Request, workout_request: WorkoutGenerationR
                 workout_plan = await pipeline.generate_workout_plan(user_profile)
             
             logger.info(f"Successfully generated workout plan with {len(workout_plan.workoutGroups)} workout groups")
-            return workout_plan
+            
+            # Add metadata about the model used
+            model_provider = "unknown"
+            model_name = "unknown"
+            
+            if isinstance(service, MLXAgentService):
+                model_provider = "mlx"
+                model_name = llm_config.get("mlx_model_path", "unknown").split("/")[-1] if llm_config else "mlx-model"
+            elif isinstance(service, GGUFService):
+                model_provider = "gguf"
+                model_name = llm_config.get("gguf_model_path", "unknown").split("/")[-1] if llm_config else "gguf-model"
+            elif isinstance(service, LLMService):
+                # Determine provider from base URL
+                base_url = llm_config.get("llm_base_url", "") if llm_config else ""
+                model_name = llm_config.get("llm_model", "unknown") if llm_config else "unknown"
+                
+                if "openai.com" in base_url:
+                    model_provider = "openai"
+                elif "anthropic.com" in base_url:
+                    model_provider = "anthropic"
+                elif "groq.com" in base_url:
+                    model_provider = "groq"
+                elif "127.0.0.1" in base_url or "localhost" in base_url:
+                    if ":1234" in base_url:
+                        model_provider = "lm_studio"
+                    elif ":11434" in base_url or ":8001" in base_url:
+                        model_provider = "ollama"
+                    elif ":8000" in base_url:
+                        model_provider = "omlx"
+                    else:
+                        model_provider = "local_server"
+                else:
+                    model_provider = "api"
+            
+            # Return workout plan with metadata
+            return {
+                **workout_plan.dict(),
+                "metadata": {
+                    "model_provider": model_provider,
+                    "model_name": model_name,
+                    "generated_at": datetime.now().isoformat(),
+                    "workout_groups_count": len(workout_plan.workoutGroups)
+                }
+            }
             
         finally:
             # Cleanup: Unload model after generation is complete
@@ -420,6 +463,61 @@ async def generate_workout(request: Request, workout_request: WorkoutGenerationR
     except Exception as e:
         logger.error(f"Error generating workout: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate workout plan: {str(e)}")
+
+@app.post("/api/v1/models/unload")
+async def unload_model():
+    """
+    Manually unload the currently loaded model from memory.
+    
+    This endpoint allows explicit cleanup of models to free up memory.
+    Useful after workout generation or when switching between models.
+    
+    Returns:
+        dict: Status of the unload operation
+    """
+    try:
+        settings = get_settings()
+        unloaded = False
+        model_type = "none"
+        
+        # Check which service is active and unload it
+        if settings.use_mlx and mlx_agent:
+            logger.info("Unloading MLX model...")
+            mlx_agent.cleanup()
+            model_type = "MLX"
+            unloaded = True
+            logger.info("✓ MLX model unloaded successfully")
+            
+        elif settings.use_gguf and gguf_service:
+            logger.info("Unloading GGUF model...")
+            # GGUF cleanup - delete reference and force garbage collection
+            import gc
+            del globals()['gguf_service']
+            gc.collect()
+            model_type = "GGUF"
+            unloaded = True
+            logger.info("✓ GGUF model reference cleared")
+            
+        else:
+            # API-based services don't need unloading
+            model_type = "API-based"
+            logger.info("No local model to unload (using API-based service)")
+        
+        return {
+            "success": True,
+            "message": f"{model_type} model unloaded successfully" if unloaded else "No local model loaded",
+            "model_type": model_type,
+            "unloaded": unloaded,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error unloading model: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to unload model: {str(e)}"
+        )
+
 
 
 @app.get("/api/v1/exercises/search")

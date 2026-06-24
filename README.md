@@ -516,6 +516,47 @@ docker-compose up -d
 
 ### Windows-Specific Issues
 
+#### Packages Installing to Temp Folder Instead of venv
+**Problem:** When running `pip install -r requirements.txt`, packages install to Windows temp folder instead of the project's venv folder.
+
+**Cause:** Virtual environment is not properly activated before running pip.
+
+**Solution:**
+1. **Use the provided script** (Recommended):
+   ```cmd
+   run_frontend.bat
+   ```
+   The script now automatically:
+   - Creates venv if it doesn't exist
+   - Activates venv properly
+   - Installs all dependencies in the correct location
+   - Verifies installation
+
+2. **Manual activation** (if needed):
+   ```cmd
+   # Create venv
+   python -m venv venv
+   
+   # Activate venv (IMPORTANT!)
+   venv\Scripts\activate.bat
+   
+   # Verify you're in venv (should show venv path)
+   where python
+   
+   # Now install
+   pip install -r requirements.txt
+   ```
+
+3. **Verify installation location:**
+   ```cmd
+   # After installation, check where packages are
+   venv\Scripts\pip list
+   
+   # Should show packages installed in venv\Lib\site-packages
+   ```
+
+**Important:** Always activate the venv BEFORE running pip commands. The `(venv)` prefix in your command prompt indicates activation.
+
 #### ChromaDB Installation Fails
 **Error:** `Microsoft Visual C++ 14.0 or greater is required`
 
@@ -824,6 +865,6 @@ The API returns workout plans in a custom format designed for Android app integr
 
 ---
 
-**Version**: 2.2.0
-**Last Updated**: 2026-06-16
+**Version**: 2.3.0
+**Last Updated**: 2026-06-24
 **Status**: Production Ready ✅
