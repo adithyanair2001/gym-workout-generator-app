@@ -133,11 +133,21 @@
                 <div id="localServerOptions" class="model-options" style="display:none;">
                     <div class="form-group">
                         <label for="localServerUrl">Server URL</label>
-                        <select id="localServerUrl">
+                        <select id="localServerUrl" onchange="ModelConfig.clearLocalServerModels()">
                             <option value="http://127.0.0.1:1234/v1">LM Studio (port 1234)</option>
                             <option value="http://127.0.0.1:8001/v1">OLLAMA (port 8001)</option>
                             <option value="http://127.0.0.1:11434/v1">OLLAMA (default port 11434)</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="localServerModel">Model</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="localServerModel" placeholder="local-model or select from list" style="flex: 1;">
+                            <button type="button" class="btn btn-secondary" onclick="ModelConfig.fetchLocalServerModels()" style="white-space: nowrap;">
+                                🔄 Fetch Models
+                            </button>
+                        </div>
+                        <small class="form-text">Click "Fetch Models" to list available models from your server</small>
                     </div>
                 </div>
 

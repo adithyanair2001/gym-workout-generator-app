@@ -137,7 +137,115 @@ const ModelConfig = {
     },
     
     /**
-     * Update model dropdown with fetched models
+     * Fetch available models from Local Server (LM Studio/OLLAMA)
+     */
+    async fetchLocalServerModels() {
+        const serverUrl = document.getElementById('localServerUrl').value;
+        
+        if (!serverUrl) {
+            UI.showNotification('Please select a server URL first', 'error');
+            return;
+        }
+        
+        // Show loading state
+        const button = event.target;
+        const originalText = button.innerHTML;
+        button.innerHTML = '⏳ Fetching...';
+        button.disabled = true;
+        
+        try {
+            // Call backend to fetch models
+            const response = await fetch('/api/models', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    base_url: serverUrl,
+                    api_key: null  // LM Studio doesn't need API key
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success && data.models && data.models.length > 0) {
+                this.availableModels = data.models;
+                this.updateLocalServerModelDropdown();
+                UI.showNotification(`Found ${data.models.length} model(s)`, 'success');
+            } else {
+                UI.showNotification(data.message || 'No models found. Make sure LM Studio server is running and a model is loaded.', 'error');
+            }
+        } catch (error) {
+            UI.showNotification(`Error: ${error.message}`, 'error');
+        } finally {
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }
+    },
+    
+    /**
+     * Update local server model dropdown with fetched models
+     */
+    updateLocalServerModelDropdown() {
+        const modelInput = document.getElementById('localServerModel');
+        const currentValue = modelInput.value;
+        
+        // Convert input to select dropdown
+        if (modelInput.tagName === 'INPUT') {
+            const select = document.createElement('select');
+            select.id = 'localServerModel';
+            select.className = modelInput.className;
+            
+            // Add models as options
+            this.availableModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.id;
+                select.appendChild(option);
+            });
+            
+            // Replace input with select
+            modelInput.parentNode.replaceChild(select, modelInput);
+            
+            // Try to select the current value if it exists
+            if (currentValue && this.availableModels.some(m => m.id === currentValue)) {
+                select.value = currentValue;
+            }
+        } else {
+            // Already a select, just update options
+            modelInput.innerHTML = '';
+            this.availableModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.id;
+                modelInput.appendChild(option);
+            });
+        }
+    },
+    
+    /**
+     * Clear local server models when URL changes
+     */
+    clearLocalServerModels() {
+        const modelField = document.getElementById('localServerModel');
+        
+        // If it's a select, convert back to input
+        if (modelField.tagName === 'SELECT') {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.id = 'localServerModel';
+            input.className = modelField.className;
+            input.placeholder = 'local-model or select from list';
+            modelField.parentNode.replaceChild(input, modelField);
+        } else {
+            modelField.value = '';
+        }
+        
+        this.availableModels = [];
+    },
+    
+    /**
+     * Update model dropdown with fetched models (for OMLX)
      */
     updateModelDropdown() {
         const modelInput = document.getElementById('omlxModel');
@@ -205,6 +313,12 @@ const ModelConfig = {
                 
             case 'local_server':
                 config.llm_base_url = document.getElementById('localServerUrl').value;
+                const localServerModel = document.getElementById('localServerModel').value;
+                if (localServerModel && localServerModel.trim() !== '') {
+                    config.llm_model = localServerModel;
+                } else {
+                    config.llm_model = 'local-model';  // Default fallback
+                }
                 break;
                 
             case 'openai':

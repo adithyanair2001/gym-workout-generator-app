@@ -33,15 +33,72 @@ gym-workout-rag-backend/
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Choose Your Deployment Method
 
+#### Option 1: Docker (Recommended - No Environment Issues!) 🐳
+
+**Why Docker?**
+- ✅ Works on Windows, Mac, Linux without any setup issues
+- ✅ No Python/venv configuration needed
+- ✅ No ChromaDB C++ build tools required
+- ✅ Consistent environment everywhere
+- ✅ Easy cleanup and updates
+
+**Prerequisites:**
+- Docker Desktop (Windows/Mac) or Docker Engine (Linux)
+- 4GB RAM for Docker
+- 10GB disk space
+
+**Quick Start:**
+```bash
+# 1. Copy and configure environment
+cp .env.example .env
+# Edit .env with your LLM settings
+
+# 2. Start with Docker Compose
+docker-compose up -d
+
+# 3. View logs
+docker-compose logs -f
+
+# 4. Access application
+# Frontend: http://localhost:7500
+# Backend: http://localhost:7501
+```
+
+**Important for Docker:** When using LM Studio/OLLAMA on your host machine, use `host.docker.internal` instead of `localhost`:
+```env
+# In .env file
+LLM_BASE_URL=http://host.docker.internal:1234/v1  # For LM Studio
+# OR
+LLM_BASE_URL=http://host.docker.internal:11434/v1  # For OLLAMA
+```
+
+**Docker Commands:**
+```bash
+# Stop services
+docker-compose down
+
+# Rebuild after changes
+docker-compose up -d --build
+
+# View logs
+docker-compose logs -f
+
+# Remove everything
+docker-compose down -v
+```
+
+#### Option 2: Traditional Installation (Python/venv)
+
+**Prerequisites:**
 - Python 3.9+
-- **Windows**: Visual C++ Build Tools OR use FAISS instead of ChromaDB (see Windows Setup below)
+- **Windows**: Visual C++ Build Tools OR use FAISS instead of ChromaDB
 - **macOS**: For MLX models (Apple Silicon only)
 - **Linux**: All features supported
 - 8GB+ RAM recommended
 
-### Installation
+**Installation:**
 
 1. **Clone the repository**:
 ```bash
@@ -387,6 +444,75 @@ bash run_frontend.sh
 3. **Reduce Context Length:**
    - In LM Studio settings, reduce "Context Length"
    - Try 2048 or 4096 instead of 8192+
+
+### Docker Issues
+
+#### Container Won't Start
+**Check logs:**
+```bash
+docker-compose logs gym-workout-rag
+```
+
+**Common causes:**
+1. **Port already in use:**
+   ```bash
+   # Windows
+   netstat -ano | findstr :7500
+   
+   # Mac/Linux
+   lsof -i :7500
+   
+   # Solution: Change port in docker-compose.yml
+   ports:
+     - "8500:7500"  # Use 8500 instead
+   ```
+
+2. **Docker not running:**
+   - Start Docker Desktop (Windows/Mac)
+   - Check: `docker ps`
+
+3. **Out of memory:**
+   - Docker Desktop → Settings → Resources
+   - Increase memory to at least 4GB
+
+#### Cannot Connect to LM Studio/OLLAMA on Host
+
+**Problem:** Docker container can't reach services running on your computer
+
+**Solution:** Use `host.docker.internal` instead of `localhost`:
+```env
+# ❌ Wrong (won't work in Docker)
+LLM_BASE_URL=http://127.0.0.1:1234/v1
+
+# ✅ Correct (works in Docker)
+LLM_BASE_URL=http://host.docker.internal:1234/v1
+```
+
+**Test from container:**
+```bash
+docker exec -it gym-workout-rag curl http://host.docker.internal:1234/v1/models
+```
+
+#### Slow Performance in Docker
+
+**Solutions:**
+1. Allocate more resources (Docker Desktop → Settings → Resources)
+2. Use cloud APIs instead of local models
+3. Run OLLAMA inside Docker:
+   ```bash
+   docker-compose --profile with-ollama up -d
+   docker exec -it ollama ollama pull llama3.2
+   ```
+
+#### Vector Database Issues in Docker
+
+**Clear and rebuild:**
+```bash
+docker-compose down
+rm -rf data/chroma_db/  # Linux/Mac
+rmdir /s /q data\chroma_db  # Windows
+docker-compose up -d
+```
 
 ### Windows-Specific Issues
 

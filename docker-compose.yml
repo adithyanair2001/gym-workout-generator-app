@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  gym-workout-rag:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gym-workout-rag
+    ports:
+      - "7500:7500"  # Flask Frontend
+      - "7501:7501"  # FastAPI Backend
+    volumes:
+      # Persist vector database
+      - ./data:/app/data
+      # Mount .env file for configuration
+      - ./.env:/app/.env:ro
+    environment:
+      # Override these in .env file or here
+      - API_HOST=0.0.0.0
+      - API_PORT=7501
+      - FRONTEND_URL=http://localhost:7500
+      - FASTAPI_URL=http://localhost:7501
+      # For local LLM servers running on host machine
+      # Use host.docker.internal instead of localhost/127.0.0.1
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:1234/v1}
+    extra_hosts:
+      # Allow container to access host machine's localhost
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7501/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Run LM Studio alternative (OLLAMA) in Docker
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    profiles:
+      - with-ollama
+
+volumes:
+  ollama_data:
+    driver: local
+
+# Made with Bob
