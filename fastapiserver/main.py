@@ -411,32 +411,31 @@ async def generate_workout(request: Request, workout_request: WorkoutGenerationR
             _MLXAgentService = _get_mlx_agent_class()
             if _MLXAgentService and isinstance(service, _MLXAgentService):
                 model_provider = "mlx"
-                model_name = llm_config.get("mlx_model_path", "unknown").split("/")[-1] if llm_config else "mlx-model"
+                mlx_path = (llm_config.mlx_model_path if llm_config else None) or "unknown"
+                model_name = mlx_path.split("/")[-1]
             elif isinstance(service, GGUFService):
                 model_provider = "gguf"
-                model_name = llm_config.get("gguf_model_path", "unknown").split("/")[-1] if llm_config else "gguf-model"
+                gguf_path = (llm_config.gguf_model_path if llm_config else None) or "unknown"
+                model_name = gguf_path.split("/")[-1]
             elif isinstance(service, LLMService):
-                # Determine provider from base URL
-                base_url = llm_config.get("llm_base_url", "") if llm_config else ""
-                model_name = llm_config.get("llm_model", "unknown") if llm_config else "unknown"
-                
+                # Read directly from the service (already resolved, handles auto-resolved model)
+                base_url = service.base_url
+                model_name = service.model
+
                 if "openai.com" in base_url:
                     model_provider = "openai"
                 elif "anthropic.com" in base_url:
                     model_provider = "anthropic"
                 elif "groq.com" in base_url:
                     model_provider = "groq"
-                elif "127.0.0.1" in base_url or "localhost" in base_url:
-                    if ":1234" in base_url:
-                        model_provider = "lm_studio"
-                    elif ":11434" in base_url or ":8001" in base_url:
-                        model_provider = "ollama"
-                    elif ":8000" in base_url:
-                        model_provider = "omlx"
-                    else:
-                        model_provider = "local_server"
+                elif ":1234" in base_url:
+                    model_provider = "lm_studio"
+                elif ":11434" in base_url or ":8001" in base_url:
+                    model_provider = "ollama"
+                elif ":8000" in base_url:
+                    model_provider = "omlx"
                 else:
-                    model_provider = "api"
+                    model_provider = "local_server"
             
             # Return workout plan with metadata
             return {
