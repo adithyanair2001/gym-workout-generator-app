@@ -24,11 +24,19 @@ from fastapiserver.services.database_tools import DatabaseTools
 from fastapiserver.services.exercisedb_client import ExerciseDBClient
 from fastapiserver.services.gguf_service import GGUFService
 from fastapiserver.services.llm_service import LLMService
-from fastapiserver.services.mlx_agent_service import MLXAgentService
 from fastapiserver.services.rag_pipeline import RAGPipeline
 from fastapiserver.services.vector_store import VectorStoreService
 from fastapiserver.services.service_factory import ServiceFactory
 from fastapiserver.utils.logging_config import RequestIDFilter, setup_structured_logging
+
+
+def _get_mlx_agent_class():
+    """Return MLXAgentService class, or None if mlx is not available (non-Apple-Silicon)."""
+    try:
+        from fastapiserver.services.mlx_agent_service import MLXAgentService
+        return MLXAgentService
+    except (ImportError, ModuleNotFoundError):
+        return None
 
 # Configure structured logging
 settings_for_logging = get_settings()
@@ -335,7 +343,8 @@ async def generate_workout(request: Request, workout_request: WorkoutGenerationR
         
         try:
             # Determine if this is an MLX agent or RAG pipeline
-            if isinstance(service, MLXAgentService):
+            _MLXAgentService = _get_mlx_agent_class()
+            if _MLXAgentService and isinstance(service, _MLXAgentService):
                 logger.info("Generating workout plan with MLX agent...")
                 # Generate with MLX agent
                 raw_response = service.generate_workout_plan(user_profile)
@@ -399,7 +408,8 @@ async def generate_workout(request: Request, workout_request: WorkoutGenerationR
             model_provider = "unknown"
             model_name = "unknown"
             
-            if isinstance(service, MLXAgentService):
+            _MLXAgentService = _get_mlx_agent_class()
+            if _MLXAgentService and isinstance(service, _MLXAgentService):
                 model_provider = "mlx"
                 model_name = llm_config.get("mlx_model_path", "unknown").split("/")[-1] if llm_config else "mlx-model"
             elif isinstance(service, GGUFService):
@@ -441,7 +451,8 @@ async def generate_workout(request: Request, workout_request: WorkoutGenerationR
             
         finally:
             # Cleanup: Unload model after generation is complete
-            if isinstance(service, MLXAgentService):
+            _MLXAgentService = _get_mlx_agent_class()
+            if _MLXAgentService and isinstance(service, _MLXAgentService):
                 logger.info("Cleaning up MLX model from memory...")
                 service.cleanup()
                 logger.info("✓ MLX model unloaded successfully")

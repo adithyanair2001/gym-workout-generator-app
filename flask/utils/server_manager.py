@@ -68,15 +68,18 @@ class ServerManager:
             backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
             venv_python = os.path.join(backend_dir, 'venv', 'bin', 'python')
             
-            # Check if venv python exists
-            if not os.path.exists(venv_python):
-                print(f"❌ Virtual environment not found at {venv_python}")
-                print("Please create a virtual environment first: python -m venv venv")
-                return False
+            # Use venv python if it exists (local dev), otherwise fall back to
+            # the system python (Docker / CI environments where venv is not used)
+            if os.path.exists(venv_python):
+                python_bin = venv_python
+            else:
+                import sys
+                python_bin = sys.executable
+                print(f"ℹ️  No venv found — using system Python: {python_bin}")
             
             # Start FastAPI with output visible in terminal
             self.process = subprocess.Popen(
-                [venv_python, '-m', 'uvicorn', 'fastapiserver.main:app',
+                [python_bin, '-m', 'uvicorn', 'fastapiserver.main:app',
                  '--host', '0.0.0.0', '--port', '7501'],
                 cwd=backend_dir,
                 preexec_fn=os.setsid if os.name != 'nt' else None  # Create new process group on Unix

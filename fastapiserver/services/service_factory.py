@@ -7,10 +7,18 @@ from functools import lru_cache
 from fastapiserver.models.model_config import ModelConfig, ModelType
 from fastapiserver.services.llm_service import LLMService
 from fastapiserver.services.gguf_service import GGUFService
-from fastapiserver.services.mlx_agent_service import MLXAgentService
 from fastapiserver.services.database_tools import DatabaseTools
 from fastapiserver.services.vector_store import VectorStoreService
 from fastapiserver.config import get_settings
+
+
+def _try_import_mlx_agent():
+    """Import MLXAgentService only on platforms where mlx is available."""
+    try:
+        from fastapiserver.services.mlx_agent_service import MLXAgentService
+        return MLXAgentService
+    except (ImportError, ModuleNotFoundError):
+        return None
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +47,11 @@ class ServiceFactory:
         logger.info(f"Clearing service cache with {len(cls._service_cache)} services")
         
         # Cleanup each cached service
+        _MLXAgentService = _try_import_mlx_agent()
         for cache_key, service in cls._service_cache.items():
             try:
                 # Only MLX services need explicit cleanup
-                if isinstance(service, MLXAgentService):
+                if _MLXAgentService and isinstance(service, _MLXAgentService):
                     logger.info(f"Cleaning up MLX service: {cache_key}")
                     service.cleanup()
             except Exception as e:
@@ -60,8 +69,9 @@ class ServiceFactory:
         """
         if cache_key in cls._service_cache:
             service = cls._service_cache[cache_key]
+            _MLXAgentService = _try_import_mlx_agent()
             try:
-                if isinstance(service, MLXAgentService):
+                if _MLXAgentService and isinstance(service, _MLXAgentService):
                     logger.info(f"Cleaning up MLX service: {cache_key}")
                     service.cleanup()
             except Exception as e:
@@ -95,7 +105,7 @@ class ServiceFactory:
         model_config: Optional[ModelConfig],
         vector_store: VectorStoreService,
         use_cache: bool = True
-    ) -> Union[MLXAgentService, GGUFService, LLMService]:
+    ) -> Union[GGUFService, LLMService]:
         """Create appropriate LLM service based on configuration.
         
         Args:
@@ -140,7 +150,7 @@ class ServiceFactory:
         return service
     
     @classmethod
-    def _create_from_env(cls, vector_store: VectorStoreService) -> Union[MLXAgentService, GGUFService, LLMService]:
+    def _create_from_env(cls, vector_store: VectorStoreService) -> Union[GGUFService, LLMService]:
         """Create service from .env configuration.
         
         Args:
@@ -153,8 +163,11 @@ class ServiceFactory:
         
         if settings.use_mlx:
             logger.info("Creating MLX agent from .env configuration")
+            _MLXAgentService = _try_import_mlx_agent()
+            if _MLXAgentService is None:
+                raise ImportError("USE_MLX=true but mlx is not available on this platform.")
             database_tools = DatabaseTools(vector_store)
-            return MLXAgentService(
+            return _MLXAgentService(
                 model_path=settings.mlx_model_path,
                 database_tools=database_tools,
                 temperature=settings.llm_temperature,
@@ -180,7 +193,7 @@ class ServiceFactory:
             )
     
     @classmethod
-    def _create_mlx_service(cls, config: ModelConfig, vector_store: VectorStoreService) -> MLXAgentService:
+    def _create_mlx_service(cls, config: ModelConfig, vector_store: VectorStoreService):
         """Create MLX agent service.
         
         Args:
@@ -190,11 +203,14 @@ class ServiceFactory:
         Returns:
             Initialized MLX agent service
         """
+        _MLXAgentService = _try_import_mlx_agent()
+        if _MLXAgentService is None:
+            raise ImportError("model_type='mlx' requested but mlx is not available on this platform.")
         if not config.mlx_model_path:
             raise ValueError("mlx_model_path is required for MLX model")
         
         database_tools = DatabaseTools(vector_store)
-        return MLXAgentService(
+        return _MLXAgentService(
             model_path=config.mlx_model_path,
             database_tools=database_tools,
             temperature=config.temperature,

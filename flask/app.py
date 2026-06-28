@@ -91,7 +91,7 @@ def main():
     print("=" * 60 + "\n")
     
     try:
-        app.run(debug=True, port=7500, use_reloader=False)
+        app.run(host="0.0.0.0", debug=True, port=7500, use_reloader=False)
     except (KeyboardInterrupt, SystemExit):
         print("\n\n🛑 Shutting down servers...")
         server_manager.stop_server()

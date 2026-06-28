@@ -139,7 +139,7 @@ const ModelConfig = {
     /**
      * Fetch available models from Local Server (LM Studio/OLLAMA)
      */
-    async fetchLocalServerModels() {
+    async fetchLocalServerModels(button) {
         const serverUrl = document.getElementById('localServerUrl').value;
         
         if (!serverUrl) {
@@ -148,7 +148,6 @@ const ModelConfig = {
         }
         
         // Show loading state
-        const button = event.target;
         const originalText = button.innerHTML;
         button.innerHTML = '⏳ Fetching...';
         button.disabled = true;

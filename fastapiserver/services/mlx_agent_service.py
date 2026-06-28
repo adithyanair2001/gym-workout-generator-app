@@ -49,9 +49,21 @@ class MLXAgentService:
         self.database_tools = database_tools
         self._is_loaded = False
         
+        # Import mlx lazily so the module can be imported on non-Apple-Silicon
+        try:
+            from mlx_lm import generate as _generate, load as _load
+            self._generate = _generate
+            self._load = _load
+        except ImportError as e:
+            raise ImportError(
+                "mlx-lm is required for MLXAgentService but is not installed or "
+                "this platform is not Apple Silicon. "
+                f"Original error: {e}"
+            )
+        
         # Load MLX model
         logger.info(f"Loading MLX model from {model_path}...")
-        load_result = load(model_path)
+        load_result = self._load(model_path)
         if len(load_result) == 3:
             self.model, self.tokenizer, self.config = load_result
         else:
@@ -418,7 +430,7 @@ Start by using the tools to search for exercises, then create the complete worko
                     conversation_history += "\n\nYou have gathered enough information. Now provide the Final Answer with the complete workout plan in JSON format."
                 
                 # Generate response
-                response = generate(
+                response = self._generate(
                     self.model,
                     self.tokenizer,
                     prompt=conversation_history,
@@ -512,7 +524,7 @@ Start by using the tools to search for exercises, then create the complete worko
         
         try:
             # Test with a simple generation
-            response = generate(
+            response = self._generate(
                 self.model,
                 self.tokenizer,
                 prompt="Hello, how are you?",
