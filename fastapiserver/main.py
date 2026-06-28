@@ -559,6 +559,23 @@ async def search_exercises(query: str, limit: int = 10):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/v1/config")
+async def get_config():
+    """Return runtime configuration hints for the frontend.
+
+    Extracts the host from llm_base_url so the UI can build
+    provider-specific URLs with the correct host for the current
+    runtime (127.0.0.1 locally, host.docker.internal in Docker).
+    """
+    from urllib.parse import urlparse
+    settings = get_settings()
+    parsed = urlparse(settings.llm_base_url)
+    return {
+        "llm_host": parsed.hostname or "127.0.0.1",
+        "llm_base_url": settings.llm_base_url,
+    }
+
+
 @app.get("/api/v1/stats")
 async def get_stats():
     """Get system statistics."""
@@ -583,16 +600,22 @@ async def get_stats():
 async def list_models():
     """List available models from the LLM provider.
     
+    For external/local servers (LM Studio, OMLX, OLLAMA) this queries
+    the configured LLM_BASE_URL directly, so it works even before the
+    first generate request (no lazy-loaded service required).
+    
     Returns:
         List of available models with their metadata
         
     Raises:
         HTTPException: If listing fails or service not available
     """
+    import requests as _requests
+
     try:
         settings = get_settings()
         
-        # Only works with external LLM services (not MLX or GGUF)
+        # MLX / GGUF — no remote server to query
         if settings.use_mlx:
             return {
                 "provider": "mlx",
@@ -606,21 +629,27 @@ async def list_models():
                 "current_model": settings.gguf_model_path
             }
         
-        if not llm_service:
-            raise HTTPException(
-                status_code=503,
-                detail="LLM service not initialized"
-            )
+        # Query the server directly — works regardless of lazy-load state
+        base_url = settings.llm_base_url
+        headers = {}
+        if settings.llm_api_key:
+            headers["Authorization"] = f"Bearer {settings.llm_api_key}"
         
-        models = llm_service.list_models()
+        resp = _requests.get(f"{base_url}/models", headers=headers, timeout=5)
+        resp.raise_for_status()
+        models = resp.json().get("data", [])
         
         return {
             "provider": "external_api",
-            "base_url": settings.llm_base_url,
+            "base_url": base_url,
             "models": models,
             "count": len(models)
         }
         
+    except _requests.exceptions.ConnectionError:
+        raise HTTPException(status_code=503, detail=f"Cannot connect to LLM server at {settings.llm_base_url}")
+    except _requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail=f"LLM server timed out at {settings.llm_base_url}")
     except Exception as e:
         logger.error(f"Error listing models: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list models: {str(e)}")

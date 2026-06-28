@@ -39,6 +39,41 @@ const DOM = {
 // ============================================
 const ModelConfig = {
     availableModels: [],
+    llmHost: '127.0.0.1',   // populated from /api/config at init
+
+    // Maps provider key → [port, path]
+    _providerPorts: {
+        'lm_studio':   [1234,  '/v1'],
+        'ollama':      [11434, '/v1'],
+        'ollama_8001': [8001,  '/v1'],
+    },
+
+    /**
+     * Build a full base URL for a local provider using the runtime host.
+     * @param {string} providerKey - one of the _providerPorts keys
+     * @returns {string} e.g. "http://host.docker.internal:1234/v1"
+     */
+    _providerUrl(providerKey) {
+        const [port, path] = this._providerPorts[providerKey] || [1234, '/v1'];
+        return `http://${this.llmHost}:${port}${path}`;
+    },
+
+    /**
+     * Fetch the runtime LLM host from the backend config endpoint.
+     * Called once on page load.
+     */
+    async loadRuntimeHost() {
+        try {
+            const resp = await fetch('/api/config');
+            const data = await resp.json();
+            if (data.llm_host) {
+                this.llmHost = data.llm_host;
+            }
+        } catch (e) {
+            console.log('Could not load runtime host, defaulting to 127.0.0.1', e);
+        }
+    },
+
     
     /**
      * Update visible model options based on selected type
@@ -140,28 +175,29 @@ const ModelConfig = {
      * Fetch available models from Local Server (LM Studio/OLLAMA)
      */
     async fetchLocalServerModels(button) {
-        const serverUrl = document.getElementById('localServerUrl').value;
-        
-        if (!serverUrl) {
-            UI.showNotification('Please select a server URL first', 'error');
+        const providerKey = document.getElementById('localServerUrl').value;
+        const resolvedUrl = this._providerUrl(providerKey);
+
+        if (!providerKey) {
+            UI.showNotification('Please select a server first', 'error');
             return;
         }
-        
+
         // Show loading state
         const originalText = button.innerHTML;
         button.innerHTML = '⏳ Fetching...';
         button.disabled = true;
         
         try {
-            // Call backend to fetch models
+            // Call backend to fetch models using the runtime-resolved URL
             const response = await fetch('/api/models', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    base_url: serverUrl,
-                    api_key: null  // LM Studio doesn't need API key
+                    base_url: resolvedUrl,
+                    api_key: null
                 })
             });
             
@@ -311,13 +347,12 @@ const ModelConfig = {
                 break;
                 
             case 'local_server':
-                config.llm_base_url = document.getElementById('localServerUrl').value;
+                config.llm_base_url = this._providerUrl(document.getElementById('localServerUrl').value);
                 const localServerModel = document.getElementById('localServerModel').value;
                 if (localServerModel && localServerModel.trim() !== '') {
                     config.llm_model = localServerModel;
-                } else {
-                    config.llm_model = 'local-model';  // Default fallback
                 }
+                // empty model → backend will auto-resolve from /v1/models
                 break;
                 
             case 'openai':
@@ -700,6 +735,9 @@ const App = {
     init() {
         console.log('🏋️ Gym Workout RAG - Initializing...');
         
+        // Fetch runtime host so local server URLs use the correct host
+        ModelConfig.loadRuntimeHost();
+
         // Cache DOM elements
         DOM.init();
         

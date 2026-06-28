@@ -184,9 +184,12 @@ class ServiceFactory:
             )
         else:
             logger.info("Creating LLM service from .env configuration")
+            model = settings.llm_model
+            if not model or model in ("local-model", ""):
+                model = cls._resolve_model(settings.llm_base_url, settings.llm_api_key)
             return LLMService(
                 base_url=settings.llm_base_url,
-                model=settings.llm_model,
+                model=model,
                 api_key=settings.llm_api_key,
                 temperature=settings.llm_temperature,
                 max_tokens=settings.llm_max_tokens
@@ -259,13 +262,47 @@ class ServiceFactory:
         elif config.model_type == ModelType.GROQ and not config.llm_base_url:
             config.llm_base_url = "https://api.groq.com/openai/v1"
         
+        model = config.llm_model
+        if not model or model in ("local-model", ""):
+            model = cls._resolve_model(config.llm_base_url, config.llm_api_key or "")
         return LLMService(
             base_url=config.llm_base_url,
-            model=config.llm_model or "local-model",
+            model=model,
             api_key=config.llm_api_key or "",
             temperature=config.temperature,
             max_tokens=config.max_tokens
         )
+
+    @classmethod
+    def _resolve_model(cls, base_url: str, api_key: str = "") -> str:
+        """Fetch the first available model from the server.
+
+        Called when no model name is configured, so the server is queried
+        at runtime and the first model ID is used automatically.
+
+        Args:
+            base_url: OpenAI-compatible base URL (e.g. http://host:1234/v1)
+            api_key:  Optional API key for the request
+
+        Returns:
+            Model ID string, or 'local-model' as a last-resort fallback
+        """
+        import requests as _requests
+        try:
+            headers = {}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            resp = _requests.get(f"{base_url}/models", headers=headers, timeout=5)
+            resp.raise_for_status()
+            data = resp.json().get("data", [])
+            if data:
+                model_id = data[0]["id"]
+                logger.info(f"Auto-resolved model from {base_url}: {model_id}")
+                return model_id
+            logger.warning(f"No models returned from {base_url}, falling back to 'local-model'")
+        except Exception as e:
+            logger.warning(f"Could not auto-resolve model from {base_url}: {e}. Falling back to 'local-model'")
+        return "local-model"
 
 
 # Made with Bob

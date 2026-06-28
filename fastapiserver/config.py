@@ -40,12 +40,13 @@ class Settings(BaseSettings):
     gguf_n_gpu_layers: int = 0  # Number of layers to offload to GPU (0 = CPU only)
     
     # Option 3 & 4: External LLM (Local servers or Public APIs)
-    # For local servers (LM Studio, OLLAMA): http://127.0.0.1:PORT/v1
-    # For OpenAI: https://api.openai.com/v1
-    # For Anthropic: https://api.anthropic.com/v1
-    # For Groq: https://api.groq.com/openai/v1
-    llm_base_url: str = "http://127.0.0.1:8001/v1"
-    llm_model: str = "local-model"
+    # llm_base_url       — used when running locally (no Docker)
+    # llm_base_url_docker — used inside Docker/Colima; set in .env as
+    #                       LLM_BASE_URL_DOCKER=http://host.docker.internal:PORT/v1
+    # docker-compose.yml injects LLM_BASE_URL=<LLM_BASE_URL_DOCKER value> so
+    # the app always reads llm_base_url regardless of runtime.
+    llm_base_url: str = "http://127.0.0.1:1234/v1"
+    llm_model: str = ""
     llm_api_key: str = ""  # API key for public LLM services (OpenAI, Anthropic, Groq, etc.)
     
     # Common LLM Parameters

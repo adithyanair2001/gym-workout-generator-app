@@ -39,14 +39,15 @@ services:
       # Flask → FastAPI: both run inside the same container on loopback
       - FASTAPI_URL=http://localhost:7501
       # ── Reach LM Studio / OMLX / OLLAMA on the Mac host ─────────────────────
-      # host.docker.internal resolves to the Mac host via the extra_hosts entry.
-      # Set LLM_BASE_URL in your .env to whichever server you are running:
+      # Inside Docker/Colima, 127.0.0.1 is the container, not the Mac host.
+      # LLM_BASE_URL_DOCKER overrides LLM_BASE_URL for container-only use.
+      # Set LLM_BASE_URL_DOCKER in your .env to the host.docker.internal URL:
       #   LM Studio  → http://host.docker.internal:1234/v1
-      #   OMLX       → http://host.docker.internal:8000/v1  (OMLX_BASE_URL in .env)
+      #   OMLX       → http://host.docker.internal:8000/v1
       #   OLLAMA     → http://host.docker.internal:11434/v1
-      # Default falls back to LM Studio if LLM_BASE_URL is not set in .env.
-      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:1234/v1}
-      - LLM_MODEL=${LLM_MODEL:-qwen3.5-4b-mlx}
+      # LLM_BASE_URL (127.0.0.1) is used when running locally without Docker.
+      - LLM_BASE_URL=${LLM_BASE_URL_DOCKER:-http://host.docker.internal:1234/v1}
+      - LLM_MODEL=${LLM_MODEL:-}
       - LLM_API_KEY=${LLM_API_KEY:-}
       # CORS — allow browser on the Mac to talk to both ports
       - ALLOWED_ORIGINS=http://localhost:7500,http://127.0.0.1:7500

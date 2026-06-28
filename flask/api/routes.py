@@ -452,6 +452,25 @@ def generate_workout():
         }), 500
 
 
+@api_bp.route('/config', methods=['GET'])
+def get_config():
+    """
+    Expose runtime LLM host to the frontend so the UI can build
+    provider URLs dynamically using the correct host for the runtime
+    (127.0.0.1 locally, host.docker.internal inside Docker/Colima).
+
+    Returns:
+    {
+        "llm_host": "127.0.0.1"  | "host.docker.internal" | ...
+    }
+    """
+    try:
+        response = requests.get(f"{FASTAPI_URL}/api/v1/config", timeout=5)
+        return jsonify(response.json())
+    except requests.exceptions.RequestException:
+        return jsonify({"llm_host": "127.0.0.1"})
+
+
 @api_bp.route('/health', methods=['GET'])
 def health_check():
     """
