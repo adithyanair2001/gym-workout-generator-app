@@ -46,15 +46,9 @@
                 <div id="tab-gguf" class="tab-panel">
                     <p class="tab-desc">Load a local <code>.gguf</code> model file directly. No internet required.</p>
                     <div class="form-group">
-                        <label for="ggufModelPath">GGUF Model File</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="text" id="ggufModelPath" placeholder="/path/to/model.gguf" style="flex: 1;" oninput="ModelConfig.clearValidation()">
-                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('ggufModelFileInput').click()" style="white-space: nowrap;">
-                                📁 Browse
-                            </button>
-                        </div>
-                        <input type="file" id="ggufModelFileInput" accept=".gguf" style="display: none;" onchange="handleGGUFFileSelect(event)">
-                        <small class="form-text">Select or type the full path to your <code>.gguf</code> model file.</small>
+                        <label for="ggufModelPath">GGUF Model File Path</label>
+                        <input type="text" id="ggufModelPath" placeholder="/Users/you/models/Qwen3.5-9B-Q8_0.gguf" oninput="ModelConfig.clearValidation()">
+                        <small class="form-text">Type the <strong>full absolute path</strong> to your <code>.gguf</code> file — e.g. <code>/Users/you/models/Qwen3.5-9B-Q8_0.gguf</code></small>
                     </div>
                     <div class="form-row">
                         <div class="form-group">

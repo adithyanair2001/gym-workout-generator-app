@@ -524,27 +524,6 @@ const App = {
 };
 
 // ============================================
-// File Browser Handler
-// ============================================
-window.handleGGUFFileSelect = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    // Use webkitRelativePath or fallback; give user the filename so they can set the full path
-    const modelPathInput = document.getElementById('ggufModelPath');
-    // Use the file's full path if available (only works when served locally without sandboxing)
-    modelPathInput.value = file.name;
-    ModelConfig.clearValidation();
-
-    const outputArea = document.getElementById('modelValidationOutput');
-    if (outputArea) {
-        outputArea.innerHTML = `<div class="alert alert-info">
-            <strong>📝 File selected:</strong> ${file.name}<br>
-            If the path shown above is not the full absolute path, please type it in manually.
-        </div>`;
-    }
-};
-
-// ============================================
 // Password Visibility Toggle
 // ============================================
 window.togglePasswordVisibility = (inputId, button) => {

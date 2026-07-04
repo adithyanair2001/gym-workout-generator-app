@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Allow unknown env vars (e.g. LLM_BASE_URL_DOCKER, FASTAPI_URL)
 
 
 @lru_cache()
