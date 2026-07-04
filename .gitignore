@@ -51,6 +51,7 @@ check_*.py
 IMPROVEMENTS*.md
 *_SCHEMA.md
 *_API_SCHEMA.md
+comprehensive-exam-study-guide.html
 
 # Data
 data/chroma_db/
