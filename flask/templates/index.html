@@ -28,204 +28,112 @@
             <!-- Model Selection Card (Step 1) -->
             <section class="card" id="modelSelectionCard">
                 <h2>Choose Your AI Model</h2>
-                
-                <div class="alert alert-success">
-                    <strong>✨ Dynamic Model Selection Enabled!</strong> Your model choice will be used for workout generation. You can also use the default model from <code>.env</code> by leaving fields empty.
-                </div>
-                
-                <div class="form-group">
-                    <label for="modelType">Model Type</label>
-                    <select id="modelType">
-                        <option value="mlx">MLX Local Model <span class="badge badge-free">Free</span> <span class="badge badge-mac">Mac Only</span></option>
-                        <option value="omlx">OMLX Server <span class="badge badge-free">Free</span> <span class="badge badge-mac">Mac Only</span></option>
-                        <option value="gguf">GGUF Model <span class="badge badge-free">Free</span></option>
-                        <option value="local_server">Local Server (LM Studio/OLLAMA) <span class="badge badge-free">Free</span></option>
-                        <option value="openai">OpenAI (GPT-4) <span class="badge badge-paid">Paid</span></option>
-                        <option value="anthropic">Anthropic (Claude) <span class="badge badge-paid">Paid</span></option>
-                        <option value="groq">Groq <span class="badge badge-free">Free Tier</span></option>
-                    </select>
+
+                <!-- Option Tabs -->
+                <div class="option-tabs">
+                    <button class="option-tab active" data-tab="gguf" onclick="ModelConfig.switchTab('gguf')">
+                        📁 GGUF File
+                    </button>
+                    <button class="option-tab" data-tab="local" onclick="ModelConfig.switchTab('local')">
+                        🖥️ Local Provider
+                    </button>
+                    <button class="option-tab" data-tab="online" onclick="ModelConfig.switchTab('online')">
+                        ☁️ Online Provider
+                    </button>
                 </div>
 
-                <!-- MLX Options -->
-                <div id="mlxOptions" class="model-options">
-                    <div class="form-group">
-                        <label for="mlxModelPath">MLX Model Directory</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="text" id="mlxModelPath" value="/Users/adithyanair/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit" style="flex: 1;">
-                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('mlxModelFileInput').click()" style="white-space: nowrap;">
-                                📁 Browse
-                            </button>
-                        </div>
-                        <input type="file" id="mlxModelFileInput" webkitdirectory directory multiple style="display: none;" onchange="handleMLXDirectorySelect(event)">
-                        <small style="color: var(--text-tertiary); display: block; margin-top: 5px;">
-                            Select any file in the model directory (e.g., config.json)
-                        </small>
-                    </div>
-                </div>
-
-                <!-- OMLX Options -->
-                <div id="omlxOptions" class="model-options" style="display:none;">
-                    <div class="alert alert-info" style="margin-bottom: 15px;">
-                        <strong>OMLX Setup:</strong><br>
-                        1. <code>pip install omlx</code><br>
-                        2. <code>omlx serve --model mlx-community/Qwen3.5-4B-MLX-4bit --port 8000</code><br>
-                        3. See <code>docs/OMLX_SETUP.md</code> for details
-                    </div>
-                    <div class="form-group">
-                        <label for="omlxServerUrl">Server URL</label>
-                        <input type="text" id="omlxServerUrl" value="http://127.0.0.1:8000/v1">
-                    </div>
-                    <div class="form-group">
-                        <label for="omlxApiKey">API Key (optional)</label>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="password" id="omlxApiKey" placeholder="Enter OMLX API key if authentication is enabled" style="flex: 1;">
-                            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('omlxApiKey', this)" style="white-space: nowrap; padding: 8px 12px;">
-                                👁️ Show
-                            </button>
-                        </div>
-                        <small style="color: var(--text-tertiary); display: block; margin-top: 5px;">
-                            Leave empty if OMLX server doesn't require authentication
-                        </small>
-                    </div>
-                    <div class="form-group">
-                        <button type="button" class="btn btn-secondary" onclick="fetchOMLXModels()" style="width: 100%;">
-                            🔄 Fetch Available Models
-                        </button>
-                        <div id="omlxModelFetchStatus" style="margin-top: 10px;"></div>
-                    </div>
-                    <div class="form-group">
-                        <label for="omlxModel">Model Name</label>
-                        <input type="text" id="omlxModel" value="mlx-community/Qwen3.5-4B-MLX-4bit">
-                        <small style="color: var(--text-tertiary); display: block; margin-top: 5px;">
-                            Click "Fetch Available Models" to load models from your OMLX server
-                        </small>
-                    </div>
-                </div>
-
-                <!-- GGUF Options -->
-                <div id="ggufOptions" class="model-options" style="display:none;">
+                <!-- Tab: GGUF File -->
+                <div id="tab-gguf" class="tab-panel">
+                    <p class="tab-desc">Load a local <code>.gguf</code> model file directly. No internet required.</p>
                     <div class="form-group">
                         <label for="ggufModelPath">GGUF Model File</label>
                         <div style="display: flex; gap: 10px;">
-                            <input type="text" id="ggufModelPath" placeholder="/path/to/model.gguf" style="flex: 1;">
+                            <input type="text" id="ggufModelPath" placeholder="/path/to/model.gguf" style="flex: 1;" oninput="ModelConfig.clearValidation()">
                             <button type="button" class="btn btn-secondary" onclick="document.getElementById('ggufModelFileInput').click()" style="white-space: nowrap;">
                                 📁 Browse
                             </button>
                         </div>
                         <input type="file" id="ggufModelFileInput" accept=".gguf" style="display: none;" onchange="handleGGUFFileSelect(event)">
-                        <small style="color: var(--text-tertiary); display: block; margin-top: 5px;">
-                            Select a .gguf model file
-                        </small>
+                        <small class="form-text">Select or type the full path to your <code>.gguf</code> model file.</small>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label for="ggufContext">Context Window</label>
-                            <input type="number" id="ggufContext" value="4096">
+                            <input type="number" id="ggufContext" value="4096" min="512" max="32768">
                         </div>
                         <div class="form-group">
-                            <label for="ggufGpuLayers">GPU Layers</label>
-                            <input type="number" id="ggufGpuLayers" value="0">
+                            <label for="ggufGpuLayers">GPU Layers (0 = CPU only)</label>
+                            <input type="number" id="ggufGpuLayers" value="0" min="0">
                         </div>
                     </div>
                 </div>
 
-                <!-- Local Server Options -->
-                <div id="localServerOptions" class="model-options" style="display:none;">
+                <!-- Tab: Local Provider -->
+                <div id="tab-local" class="tab-panel" style="display:none;">
+                    <p class="tab-desc">Connect to a locally running model server (LM Studio, OLLAMA, OMLX, etc.).</p>
                     <div class="form-group">
-                        <label for="localServerUrl">Server URL</label>
-                        <select id="localServerUrl" onchange="ModelConfig.clearLocalServerModels()">
-                            <option value="lm_studio">LM Studio (port 1234)</option>
-                            <option value="ollama">OLLAMA (port 11434)</option>
-                            <option value="ollama_8001">OLLAMA (port 8001)</option>
-                        </select>
+                        <label for="localProviderUrl">Server Base URL</label>
+                        <input type="text" id="localProviderUrl" placeholder="http://127.0.0.1:1234/v1" oninput="ModelConfig.clearValidation()">
+                        <small class="form-text">
+                            Examples: LM Studio → <code>http://127.0.0.1:1234/v1</code> &nbsp;|&nbsp;
+                            OLLAMA → <code>http://127.0.0.1:11434/v1</code> &nbsp;|&nbsp;
+                            OMLX → <code>http://127.0.0.1:8000/v1</code>
+                        </small>
                     </div>
                     <div class="form-group">
-                        <label for="localServerModel">Model</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="text" id="localServerModel" placeholder="local-model or select from list" style="flex: 1;">
-                            <button type="button" class="btn btn-secondary" onclick="ModelConfig.fetchLocalServerModels(this)" style="white-space: nowrap;">
-                                🔄 Fetch Models
-                            </button>
-                        </div>
-                        <small class="form-text">Click "Fetch Models" to list available models from your server</small>
-                    </div>
-                </div>
-
-                <!-- OpenAI Options -->
-                <div id="openaiOptions" class="model-options" style="display:none;">
-                    <div class="form-group">
-                        <label for="openaiApiKey">API Key</label>
+                        <label for="localProviderApiKey">API Key <span style="font-weight:400; color:var(--text-tertiary);">(optional)</span></label>
                         <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="password" id="openaiApiKey" placeholder="sk-..." style="flex: 1;">
-                            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('openaiApiKey', this)" style="white-space: nowrap; padding: 8px 12px;">
-                                👁️ Show
-                            </button>
+                            <input type="password" id="localProviderApiKey" placeholder="Leave empty if not required" style="flex: 1;" oninput="ModelConfig.clearValidation()">
+                            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('localProviderApiKey', this)" style="white-space: nowrap; padding: 8px 12px;">👁️ Show</button>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label for="openaiModel">Model</label>
-                        <select id="openaiModel">
-                            <option value="gpt-4o-mini">GPT-4o Mini (Recommended)</option>
-                            <option value="gpt-4o">GPT-4o</option>
-                            <option value="gpt-4-turbo">GPT-4 Turbo</option>
-                        </select>
+                    <button type="button" class="btn btn-secondary" id="fetchLocalModelsBtn" onclick="ModelConfig.fetchLocalModels()" style="width:100%;">
+                        🔄 Connect &amp; Fetch Models
+                    </button>
+                    <div id="localModelPickerWrap" style="display:none; margin-top:15px;">
+                        <div class="form-group">
+                            <label for="localModelSelect">Select Model</label>
+                            <select id="localModelSelect"></select>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Anthropic Options -->
-                <div id="anthropicOptions" class="model-options" style="display:none;">
+                <!-- Tab: Online Provider -->
+                <div id="tab-online" class="tab-panel" style="display:none;">
+                    <p class="tab-desc">Use a cloud LLM API. Enter your API key to fetch and select a model.</p>
                     <div class="form-group">
-                        <label for="anthropicApiKey">API Key</label>
+                        <label for="onlineProvider">Provider</label>
+                        <select id="onlineProvider" onchange="ModelConfig.onOnlineProviderChange()">
+                            <option value="openai">OpenAI</option>
+                            <option value="anthropic">Anthropic (Claude)</option>
+                            <option value="groq">Groq</option>
+                            <option value="gemini">Google Gemini</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="onlineApiKey">API Key</label>
                         <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="password" id="anthropicApiKey" placeholder="sk-ant-..." style="flex: 1;">
-                            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('anthropicApiKey', this)" style="white-space: nowrap; padding: 8px 12px;">
-                                👁️ Show
-                            </button>
+                            <input type="password" id="onlineApiKey" placeholder="Enter your API key" style="flex: 1;" oninput="ModelConfig.clearValidation()">
+                            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('onlineApiKey', this)" style="white-space: nowrap; padding: 8px 12px;">👁️ Show</button>
                         </div>
+                        <small id="onlineApiKeyHint" class="form-text">OpenAI key starts with <code>sk-</code></small>
                     </div>
-                    <div class="form-group">
-                        <label for="anthropicModel">Model</label>
-                        <select id="anthropicModel">
-                            <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Recommended)</option>
-                            <option value="claude-3-opus-20240229">Claude 3 Opus</option>
-                            <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
-                        </select>
+                    <button type="button" class="btn btn-secondary" id="fetchOnlineModelsBtn" onclick="ModelConfig.fetchOnlineModels()" style="width:100%;">
+                        🔄 Verify Key &amp; Fetch Models
+                    </button>
+                    <div id="onlineModelPickerWrap" style="display:none; margin-top:15px;">
+                        <div class="form-group">
+                            <label for="onlineModelSelect">Select Model</label>
+                            <select id="onlineModelSelect"></select>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Groq Options -->
-                <div id="groqOptions" class="model-options" style="display:none;">
-                    <div class="form-group">
-                        <label for="groqApiKey">API Key</label>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="password" id="groqApiKey" placeholder="gsk_..." style="flex: 1;">
-                            <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('groqApiKey', this)" style="white-space: nowrap; padding: 8px 12px;">
-                                👁️ Show
-                            </button>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="groqModel">Model</label>
-                        <select id="groqModel">
-                            <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Recommended)</option>
-                            <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
-                            <option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
-                        </select>
-                    </div>
-                </div>
+                <!-- Validation output & proceed button -->
+                <div id="modelValidationOutput" style="margin-top: 16px;"></div>
 
-                <div class="alert alert-info" style="margin-top: 20px;">
-                    <strong>💡 Tips:</strong><br>
-                    • Test your model configuration before generating workouts<br>
-                    • Leave fields empty to use default <code>.env</code> configuration<br>
-                    • Model selection is now dynamic - no restart required!
-                </div>
-                
-                <!-- Model Validation Output -->
-                <div id="modelValidationOutput" style="margin-top: 15px;"></div>
-                
                 <button type="button" class="btn btn-primary btn-generate" id="validateModelBtn" onclick="proceedToWorkoutForm()">
-                    🔌 Test Connection & Continue →
+                    🔌 Test &amp; Continue →
                 </button>
             </section>
 

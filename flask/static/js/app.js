@@ -12,7 +12,8 @@ const AppState = {
     userProfile: {},
     isGenerating: false,
     modelValidated: false,
-    isValidating: false
+    isValidating: false,
+    activeTab: 'gguf'   // 'gguf' | 'local' | 'online'
 };
 
 // ============================================
@@ -24,13 +25,13 @@ const DOM = {
     outputArea: null,
     generateBtn: null,
     workoutForm: null,
-    
+
     init() {
         this.modelSelectionCard = document.getElementById('modelSelectionCard');
-        this.workoutFormCard = document.getElementById('workoutFormCard');
-        this.outputArea = document.getElementById('outputArea');
-        this.generateBtn = document.getElementById('generateBtn');
-        this.workoutForm = document.getElementById('workoutForm');
+        this.workoutFormCard    = document.getElementById('workoutFormCard');
+        this.outputArea         = document.getElementById('outputArea');
+        this.generateBtn        = document.getElementById('generateBtn');
+        this.workoutForm        = document.getElementById('workoutForm');
     }
 };
 
@@ -38,369 +39,224 @@ const DOM = {
 // Model Configuration
 // ============================================
 const ModelConfig = {
-    availableModels: [],
-    llmHost: '127.0.0.1',   // populated from /api/config at init
 
-    // Maps provider key → [port, path]
-    _providerPorts: {
-        'lm_studio':   [1234,  '/v1'],
-        'ollama':      [11434, '/v1'],
-        'ollama_8001': [8001,  '/v1'],
-    },
+    // ── Tab switching ──────────────────────────────────────────
+    switchTab(tab) {
+        AppState.activeTab = tab;
+        AppState.modelValidated = false;
+        this.clearValidation();
 
-    /**
-     * Build a full base URL for a local provider using the runtime host.
-     * @param {string} providerKey - one of the _providerPorts keys
-     * @returns {string} e.g. "http://host.docker.internal:1234/v1"
-     */
-    _providerUrl(providerKey) {
-        const [port, path] = this._providerPorts[providerKey] || [1234, '/v1'];
-        return `http://${this.llmHost}:${port}${path}`;
-    },
-
-    /**
-     * Fetch the runtime LLM host from the backend config endpoint.
-     * Called once on page load.
-     */
-    async loadRuntimeHost() {
-        try {
-            const resp = await fetch('/api/config');
-            const data = await resp.json();
-            if (data.llm_host) {
-                this.llmHost = data.llm_host;
-            }
-        } catch (e) {
-            console.log('Could not load runtime host, defaulting to 127.0.0.1', e);
-        }
-    },
-
-    
-    /**
-     * Update visible model options based on selected type
-     */
-    updateOptions() {
-        const modelType = document.getElementById('modelType').value;
-        
-        // Hide all options
-        document.querySelectorAll('.model-options').forEach(el => {
-            el.style.display = 'none';
+        // Update tab button styles
+        document.querySelectorAll('.option-tab').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
         });
-        
-        // Show selected option
-        const optionsMap = {
-            'mlx': 'mlxOptions',
-            'omlx': 'omlxOptions',
-            'gguf': 'ggufOptions',
-            'local_server': 'localServerOptions',
-            'openai': 'openaiOptions',
-            'anthropic': 'anthropicOptions',
-            'groq': 'groqOptions'
-        };
-        
-        const optionsId = optionsMap[modelType];
-        if (optionsId) {
-            document.getElementById(optionsId).style.display = 'block';
-        }
-        
-        // Load cached values for OMLX
-        if (modelType === 'omlx') {
-            this.loadCachedOMLXConfig();
-        }
-    },
-    
-    /**
-     * Load cached OMLX configuration from backend
-     */
-    async loadCachedOMLXConfig() {
-        try {
-            const response = await fetch('/api/health');
-            const data = await response.json();
-            
-            // If backend has OMLX configured, pre-fill the fields
-            if (data.backend_config) {
-                const serverUrl = document.getElementById('omlxServerUrl');
-                const apiKey = document.getElementById('omlxApiKey');
-                
-                if (data.backend_config.llm_base_url) {
-                    serverUrl.value = data.backend_config.llm_base_url;
-                }
-                if (data.backend_config.llm_api_key) {
-                    apiKey.value = data.backend_config.llm_api_key;
-                }
-            }
-        } catch (error) {
-            console.log('Could not load cached config:', error);
-        }
-    },
-    
-    /**
-     * Fetch available models from OMLX server
-     */
-    async fetchOMLXModels() {
-        const serverUrl = document.getElementById('omlxServerUrl').value;
-        const apiKey = document.getElementById('omlxApiKey').value;
-        
-        if (!serverUrl) {
-            return { success: false, message: 'Please enter server URL first' };
-        }
-        
-        try {
-            // Call backend to fetch models
-            const response = await fetch('/api/models', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    base_url: serverUrl,
-                    api_key: apiKey || null
-                })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success && data.models) {
-                this.availableModels = data.models;
-                this.updateModelDropdown();
-                return { success: true, count: data.models.length };
-            } else {
-                return { success: false, message: data.message || 'Failed to fetch models' };
-            }
-        } catch (error) {
-            return { success: false, message: `Error: ${error.message}` };
-        }
-    },
-    
-    /**
-     * Fetch available models from Local Server (LM Studio/OLLAMA)
-     */
-    async fetchLocalServerModels(button) {
-        const providerKey = document.getElementById('localServerUrl').value;
-        const resolvedUrl = this._providerUrl(providerKey);
 
-        if (!providerKey) {
-            UI.showNotification('Please select a server first', 'error');
+        // Show/hide panels
+        ['gguf', 'local', 'online'].forEach(t => {
+            const panel = document.getElementById(`tab-${t}`);
+            if (panel) panel.style.display = t === tab ? 'block' : 'none';
+        });
+    },
+
+    // ── Validation output helpers ──────────────────────────────
+    clearValidation() {
+        AppState.modelValidated = false;
+        const el = document.getElementById('modelValidationOutput');
+        if (el) el.innerHTML = '';
+    },
+
+    _setValidating(btnId, loading) {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        if (loading) {
+            btn.disabled = true;
+            btn.dataset.origText = btn.textContent;
+            btn.textContent = '⏳ Connecting...';
+        } else {
+            btn.disabled = false;
+            if (btn.dataset.origText) btn.textContent = btn.dataset.origText;
+        }
+    },
+
+    // ── Online provider hint text ──────────────────────────────
+    onOnlineProviderChange() {
+        const provider = document.getElementById('onlineProvider').value;
+        const hints = {
+            openai:    'OpenAI key starts with <code>sk-</code>',
+            anthropic: 'Anthropic key starts with <code>sk-ant-</code>',
+            groq:      'Groq key starts with <code>gsk_</code>',
+            gemini:    'Google AI Studio key starts with <code>AIza</code>'
+        };
+        const el = document.getElementById('onlineApiKeyHint');
+        if (el) el.innerHTML = hints[provider] || '';
+        // Reset model picker when provider changes
+        const wrap = document.getElementById('onlineModelPickerWrap');
+        if (wrap) wrap.style.display = 'none';
+        this.clearValidation();
+    },
+
+    // ── Local provider: fetch models ───────────────────────────
+    async fetchLocalModels() {
+        const url    = (document.getElementById('localProviderUrl').value || '').trim();
+        const apiKey = (document.getElementById('localProviderApiKey').value || '').trim();
+
+        if (!url) {
+            UI.showValidationError('Please enter the server base URL first.');
             return;
         }
 
-        // Show loading state
-        const originalText = button.innerHTML;
-        button.innerHTML = '⏳ Fetching...';
-        button.disabled = true;
-        
+        this._setValidating('fetchLocalModelsBtn', true);
+        const wrap = document.getElementById('localModelPickerWrap');
+        if (wrap) wrap.style.display = 'none';
+
         try {
-            // Call backend to fetch models using the runtime-resolved URL
-            const response = await fetch('/api/models', {
+            const resp = await fetch('/api/fetch-models', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    base_url: resolvedUrl,
-                    api_key: null
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider_type: 'local', base_url: url, api_key: apiKey || null })
             });
-            
-            const data = await response.json();
-            
+            const data = await resp.json();
+
             if (data.success && data.models && data.models.length > 0) {
-                this.availableModels = data.models;
-                this.updateLocalServerModelDropdown();
-                UI.showNotification(`Found ${data.models.length} model(s)`, 'success');
+                this._populateSelect('localModelSelect', data.models);
+                if (wrap) wrap.style.display = 'block';
+                UI.showValidationSuccess(`Connected! Found ${data.models.length} model(s).`);
             } else {
-                UI.showNotification(data.message || 'No models found. Make sure LM Studio server is running and a model is loaded.', 'error');
+                UI.showValidationError(data.message || 'No models found. Is the server running?');
             }
-        } catch (error) {
-            UI.showNotification(`Error: ${error.message}`, 'error');
+        } catch (err) {
+            UI.showValidationError(`Network error: ${err.message}`);
         } finally {
-            button.innerHTML = originalText;
-            button.disabled = false;
+            this._setValidating('fetchLocalModelsBtn', false);
         }
     },
-    
-    /**
-     * Update local server model dropdown with fetched models
-     */
-    updateLocalServerModelDropdown() {
-        const modelInput = document.getElementById('localServerModel');
-        const currentValue = modelInput.value;
-        
-        // Convert input to select dropdown
-        if (modelInput.tagName === 'INPUT') {
-            const select = document.createElement('select');
-            select.id = 'localServerModel';
-            select.className = modelInput.className;
-            
-            // Add models as options
-            this.availableModels.forEach(model => {
-                const option = document.createElement('option');
-                option.value = model.id;
-                option.textContent = model.id;
-                select.appendChild(option);
-            });
-            
-            // Replace input with select
-            modelInput.parentNode.replaceChild(select, modelInput);
-            
-            // Try to select the current value if it exists
-            if (currentValue && this.availableModels.some(m => m.id === currentValue)) {
-                select.value = currentValue;
-            }
-        } else {
-            // Already a select, just update options
-            modelInput.innerHTML = '';
-            this.availableModels.forEach(model => {
-                const option = document.createElement('option');
-                option.value = model.id;
-                option.textContent = model.id;
-                modelInput.appendChild(option);
-            });
+
+    // ── Online provider: verify key + fetch models ─────────────
+    async fetchOnlineModels() {
+        const provider = document.getElementById('onlineProvider').value;
+        const apiKey   = (document.getElementById('onlineApiKey').value || '').trim();
+
+        if (!apiKey) {
+            UI.showValidationError('Please enter your API key first.');
+            return;
         }
-    },
-    
-    /**
-     * Clear local server models when URL changes
-     */
-    clearLocalServerModels() {
-        const modelField = document.getElementById('localServerModel');
-        
-        // If it's a select, convert back to input
-        if (modelField.tagName === 'SELECT') {
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.id = 'localServerModel';
-            input.className = modelField.className;
-            input.placeholder = 'local-model or select from list';
-            modelField.parentNode.replaceChild(input, modelField);
-        } else {
-            modelField.value = '';
-        }
-        
-        this.availableModels = [];
-    },
-    
-    /**
-     * Update model dropdown with fetched models (for OMLX)
-     */
-    updateModelDropdown() {
-        const modelInput = document.getElementById('omlxModel');
-        const currentValue = modelInput.value;
-        
-        // Convert input to select dropdown
-        if (modelInput.tagName === 'INPUT') {
-            const select = document.createElement('select');
-            select.id = 'omlxModel';
-            select.className = modelInput.className;
-            
-            // Add models as options
-            this.availableModels.forEach(model => {
-                const option = document.createElement('option');
-                option.value = model.id;
-                option.textContent = model.id;
-                select.appendChild(option);
-            });
-            
-            // Replace input with select
-            modelInput.parentNode.replaceChild(select, modelInput);
-            
-            // Try to select the current value if it exists
-            if (currentValue && this.availableModels.some(m => m.id === currentValue)) {
-                select.value = currentValue;
-            }
-        } else {
-            // Already a select, just update options
-            modelInput.innerHTML = '';
-            this.availableModels.forEach(model => {
-                const option = document.createElement('option');
-                option.value = model.id;
-                option.textContent = model.id;
-                modelInput.appendChild(option);
-            });
-        }
-    },
-    
-    /**
-     * Collect current model configuration
-     */
-    getConfig() {
-        const modelType = document.getElementById('modelType').value;
-        const config = { model_type: modelType };
-        
-        switch(modelType) {
-            case 'mlx':
-                config.mlx_model_path = document.getElementById('mlxModelPath').value;
-                break;
-                
-            case 'omlx':
-                config.llm_base_url = document.getElementById('omlxServerUrl').value;
-                config.llm_model = document.getElementById('omlxModel').value;
-                const omlxApiKey = document.getElementById('omlxApiKey').value;
-                if (omlxApiKey && omlxApiKey.trim() !== '') {
-                    config.llm_api_key = omlxApiKey;
-                }
-                break;
-                
-            case 'gguf':
-                config.gguf_model_path = document.getElementById('ggufModelPath').value;
-                config.gguf_n_ctx = parseInt(document.getElementById('ggufContext').value);
-                config.gguf_n_gpu_layers = parseInt(document.getElementById('ggufGpuLayers').value);
-                break;
-                
-            case 'local_server':
-                config.llm_base_url = this._providerUrl(document.getElementById('localServerUrl').value);
-                const localServerModel = document.getElementById('localServerModel').value;
-                if (localServerModel && localServerModel.trim() !== '') {
-                    config.llm_model = localServerModel;
-                }
-                // empty model → backend will auto-resolve from /v1/models
-                break;
-                
-            case 'openai':
-                config.llm_base_url = 'https://api.openai.com/v1';
-                config.llm_model = document.getElementById('openaiModel').value;
-                config.llm_api_key = document.getElementById('openaiApiKey').value;
-                break;
-                
-            case 'anthropic':
-                config.llm_base_url = 'https://api.anthropic.com/v1';
-                config.llm_model = document.getElementById('anthropicModel').value;
-                config.llm_api_key = document.getElementById('anthropicApiKey').value;
-                break;
-                
-            case 'groq':
-                config.llm_base_url = 'https://api.groq.com/openai/v1';
-                config.llm_model = document.getElementById('groqModel').value;
-                config.llm_api_key = document.getElementById('groqApiKey').value;
-                break;
-        }
-        
-        return config;
-    },
-    
-    /**
-     * Validate model configuration
-     */
-    async validate() {
-        const config = this.getConfig();
-        
+
+        this._setValidating('fetchOnlineModelsBtn', true);
+        const wrap = document.getElementById('onlineModelPickerWrap');
+        if (wrap) wrap.style.display = 'none';
+
         try {
-            const response = await fetch('/api/validate-model', {
+            const resp = await fetch('/api/fetch-models', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(config)
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider_type: 'online', provider, api_key: apiKey })
             });
-            
-            const data = await response.json();
-            return data;
-            
-        } catch (error) {
+            const data = await resp.json();
+
+            if (data.success && data.models && data.models.length > 0) {
+                this._populateSelect('onlineModelSelect', data.models);
+                if (wrap) wrap.style.display = 'block';
+                UI.showValidationSuccess(`API key verified! Found ${data.models.length} model(s).`);
+            } else {
+                UI.showValidationError(data.message || 'Could not verify API key or fetch models.');
+            }
+        } catch (err) {
+            UI.showValidationError(`Network error: ${err.message}`);
+        } finally {
+            this._setValidating('fetchOnlineModelsBtn', false);
+        }
+    },
+
+    // ── Populate a <select> with model ids ─────────────────────
+    _populateSelect(selectId, models) {
+        const sel = document.getElementById(selectId);
+        if (!sel) return;
+        sel.innerHTML = '';
+        models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.id || m;
+            opt.textContent = m.id || m;
+            sel.appendChild(opt);
+        });
+    },
+
+    // ── Build config object for backend ───────────────────────
+    getConfig() {
+        const tab = AppState.activeTab;
+
+        if (tab === 'gguf') {
             return {
-                success: false,
-                message: `Validation error: ${error.message}`
+                model_type:       'gguf',
+                gguf_model_path:  document.getElementById('ggufModelPath').value,
+                gguf_n_ctx:       parseInt(document.getElementById('ggufContext').value) || 4096,
+                gguf_n_gpu_layers: parseInt(document.getElementById('ggufGpuLayers').value) || 0
             };
         }
+
+        if (tab === 'local') {
+            const apiKey = (document.getElementById('localProviderApiKey').value || '').trim();
+            const config = {
+                model_type:   'local_server',
+                llm_base_url: document.getElementById('localProviderUrl').value,
+                llm_model:    document.getElementById('localModelSelect')?.value || ''
+            };
+            if (apiKey) config.llm_api_key = apiKey;
+            return config;
+        }
+
+        if (tab === 'online') {
+            const provider = document.getElementById('onlineProvider').value;
+            const apiKey   = document.getElementById('onlineApiKey').value;
+            const model    = document.getElementById('onlineModelSelect')?.value || '';
+            const baseUrls = {
+                openai:    'https://api.openai.com/v1',
+                anthropic: 'https://api.anthropic.com/v1',
+                groq:      'https://api.groq.com/openai/v1',
+                gemini:    'https://generativelanguage.googleapis.com/v1beta/openai'
+            };
+            return {
+                model_type:   provider,
+                llm_base_url: baseUrls[provider] || '',
+                llm_model:    model,
+                llm_api_key:  apiKey
+            };
+        }
+
+        return {};
+    },
+
+    // ── Validate before proceeding ─────────────────────────────
+    async validate() {
+        const tab = AppState.activeTab;
+
+        if (tab === 'gguf') {
+            // GGUF: just verify file path via existing endpoint
+            const config = this.getConfig();
+            const resp = await fetch('/api/validate-model', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+            return resp.json();
+        }
+
+        if (tab === 'local') {
+            const wrap = document.getElementById('localModelPickerWrap');
+            if (!wrap || wrap.style.display === 'none') {
+                return { success: false, message: 'Please click "Connect & Fetch Models" first to verify the server.' };
+            }
+            return { success: true, message: 'Local provider verified.' };
+        }
+
+        if (tab === 'online') {
+            const wrap = document.getElementById('onlineModelPickerWrap');
+            if (!wrap || wrap.style.display === 'none') {
+                return { success: false, message: 'Please click "Verify Key & Fetch Models" first.' };
+            }
+            return { success: true, message: 'API key verified.' };
+        }
+
+        return { success: false, message: 'Unknown tab' };
     }
 };
 
@@ -408,74 +264,54 @@ const ModelConfig = {
 // Navigation
 // ============================================
 const Navigation = {
-    /**
-     * Proceed to workout form (Step 2) - with validation
-     */
     async toWorkoutForm() {
-        // Check if model is already validated
         if (AppState.modelValidated) {
             this._proceedToForm();
             return;
         }
-        
-        // Validate model first
+
         const validateBtn = document.getElementById('validateModelBtn');
         if (validateBtn) {
             validateBtn.disabled = true;
-            validateBtn.textContent = '🔄 Validating Model...';
+            validateBtn.textContent = '🔄 Validating...';
         }
-        
+
         AppState.isValidating = true;
-        
+
         try {
             const result = await ModelConfig.validate();
-            
+
             if (result.success) {
                 AppState.modelValidated = true;
                 AppState.modelConfig = ModelConfig.getConfig();
-                
-                // Show success message briefly
-                UI.showModelValidationSuccess(result.message);
-                
-                // Proceed to form after short delay
-                setTimeout(() => {
-                    this._proceedToForm();
-                }, 1000);
+                UI.showValidationSuccess(result.message);
+                setTimeout(() => this._proceedToForm(), 800);
             } else {
-                UI.showModelValidationError(result.message, result.details);
+                UI.showValidationError(result.message, result.details);
             }
         } catch (error) {
-            UI.showModelValidationError(`Validation failed: ${error.message}`);
+            UI.showValidationError(`Validation failed: ${error.message}`);
         } finally {
             AppState.isValidating = false;
             if (validateBtn) {
                 validateBtn.disabled = false;
-                validateBtn.textContent = 'Test Connection & Continue →';
+                validateBtn.textContent = '🔌 Test & Continue →';
             }
         }
     },
-    
-    /**
-     * Internal method to proceed to form
-     */
+
     _proceedToForm() {
         AppState.currentStep = 'workout-form';
         DOM.modelSelectionCard.style.display = 'none';
         DOM.workoutFormCard.style.display = 'block';
         window.scrollTo({ top: 0, behavior: 'smooth' });
     },
-    
-    /**
-     * Go back to model selection (Step 1)
-     */
+
     toModelSelection() {
         AppState.currentStep = 'model-selection';
-        AppState.modelValidated = false;  // Reset validation
-        
+        AppState.modelValidated = false;
         DOM.workoutFormCard.style.display = 'none';
         DOM.modelSelectionCard.style.display = 'block';
-        
-        // Smooth scroll to top
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 };
@@ -484,56 +320,31 @@ const Navigation = {
 // Form Handling
 // ============================================
 const FormHandler = {
-    /**
-     * Collect form data
-     */
     collectFormData() {
         return {
-            model_config: AppState.modelConfig,
-            height: document.getElementById('height').value,
-            weight: document.getElementById('weight').value,
-            age: document.getElementById('age').value,
-            gender: document.getElementById('gender').value,
-            fitness_level: document.getElementById('fitness_level').value,
-            days_per_week: document.getElementById('days_per_week').value,
+            model_config:     AppState.modelConfig,
+            height:           document.getElementById('height').value,
+            weight:           document.getElementById('weight').value,
+            age:              document.getElementById('age').value,
+            gender:           document.getElementById('gender').value,
+            fitness_level:    document.getElementById('fitness_level').value,
+            days_per_week:    document.getElementById('days_per_week').value,
             session_duration: document.getElementById('session_duration').value,
-            goals: [document.getElementById('goals').value],
-            equipment: document.getElementById('equipment').value,
-            injuries: document.getElementById('injuries').value,
-            preferred_split: document.getElementById('preferred_split').value
+            goals:            [document.getElementById('goals').value],
+            equipment:        document.getElementById('equipment').value,
+            injuries:         document.getElementById('injuries').value,
+            preferred_split:  document.getElementById('preferred_split').value
         };
     },
-    
-    /**
-     * Validate form data
-     */
+
     validate(data) {
         const errors = [];
-        
-        if (data.height < 100 || data.height > 250) {
-            errors.push('Height must be between 100-250 cm');
-        }
-        
-        if (data.weight < 30 || data.weight > 200) {
-            errors.push('Weight must be between 30-200 kg');
-        }
-        
-        if (data.age < 13 || data.age > 100) {
-            errors.push('Age must be between 13-100 years');
-        }
-        
-        if (data.days_per_week < 1 || data.days_per_week > 7) {
-            errors.push('Days per week must be between 1-7');
-        }
-        
-        if (data.session_duration < 30 || data.session_duration > 180) {
-            errors.push('Session duration must be between 30-180 minutes');
-        }
-        
-        if (!data.equipment || data.equipment.trim() === '') {
-            errors.push('Please specify available equipment');
-        }
-        
+        if (data.height < 100 || data.height > 250) errors.push('Height must be between 100–250 cm');
+        if (data.weight < 30  || data.weight > 200)  errors.push('Weight must be between 30–200 kg');
+        if (data.age < 13    || data.age > 100)      errors.push('Age must be between 13–100 years');
+        if (data.days_per_week < 1 || data.days_per_week > 7) errors.push('Days per week must be 1–7');
+        if (data.session_duration < 30 || data.session_duration > 180) errors.push('Session duration must be 30–180 minutes');
+        if (!data.equipment || data.equipment.trim() === '') errors.push('Please specify available equipment');
         return errors;
     }
 };
@@ -542,23 +353,14 @@ const FormHandler = {
 // API Communication
 // ============================================
 const API = {
-    /**
-     * Generate workout plan
-     */
     async generateWorkout(formData) {
         const response = await fetch('/api/generate', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
         });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        return await response.json();
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
     }
 };
 
@@ -566,161 +368,101 @@ const API = {
 // UI Rendering
 // ============================================
 const UI = {
-    /**
-     * Show model validation success
-     */
-    showModelValidationSuccess(message) {
-        const outputArea = document.getElementById('modelValidationOutput');
-        if (outputArea) {
-            outputArea.innerHTML = `
-                <div class="alert alert-success">
-                    <strong>✅ Success:</strong> ${this.escapeHtml(message)}
-                </div>
-            `;
-        }
+    showValidationSuccess(message) {
+        const el = document.getElementById('modelValidationOutput');
+        if (el) el.innerHTML = `<div class="alert alert-success"><strong>✅ </strong>${this.escapeHtml(message)}</div>`;
     },
-    
-    /**
-     * Show model validation error
-     */
-    showModelValidationError(message, details = null) {
-        const outputArea = document.getElementById('modelValidationOutput');
-        if (outputArea) {
-            let html = `
-                <div class="alert alert-error">
-                    <strong>❌ Validation Failed:</strong> ${this.escapeHtml(message)}
-            `;
-            
-            if (details && details.hint) {
-                html += `<br><br><strong>💡 Hint:</strong> ${this.escapeHtml(details.hint)}`;
-            }
-            
-            html += '</div>';
-            outputArea.innerHTML = html;
-        }
+
+    // Alias kept for Navigation.toWorkoutForm compatibility
+    showModelValidationSuccess(message) { this.showValidationSuccess(message); },
+
+    showValidationError(message, details = null) {
+        const el = document.getElementById('modelValidationOutput');
+        if (!el) return;
+        let html = `<div class="alert alert-error"><strong>❌ </strong>${this.escapeHtml(message)}`;
+        if (details && details.hint) html += `<br><br><strong>💡 Hint:</strong> ${this.escapeHtml(details.hint)}`;
+        html += '</div>';
+        el.innerHTML = html;
     },
-    
-    /**
-     * Show loading state
-     */
+
+    showModelValidationError(message, details = null) { this.showValidationError(message, details); },
+
     showLoading() {
         DOM.outputArea.innerHTML = `
             <div class="loading">
                 <div class="spinner"></div>
                 <p>Generating your personalized workout plan...</p>
-                <p style="color: var(--text-tertiary); font-size: 0.95em;">This may take 30-60 seconds</p>
-            </div>
-        `;
+                <p style="color: var(--text-tertiary); font-size: 0.95em;">This may take 30–60 seconds</p>
+            </div>`;
     },
-    
-    /**
-     * Show error message
-     */
+
     showError(message) {
-        DOM.outputArea.innerHTML = `
-            <div class="alert alert-error">
-                <strong>❌ Error:</strong> ${this.escapeHtml(message)}
-            </div>
-        `;
+        DOM.outputArea.innerHTML = `<div class="alert alert-error"><strong>❌ Error:</strong> ${this.escapeHtml(message)}</div>`;
     },
-    
-    /**
-     * Show validation errors
-     */
+
     showValidationErrors(errors) {
-        const errorList = errors.map(err => `<li>${this.escapeHtml(err)}</li>`).join('');
-        DOM.outputArea.innerHTML = `
-            <div class="alert alert-error">
-                <strong>❌ Validation Errors:</strong>
-                <ul style="margin-top: 10px; margin-left: 20px;">
-                    ${errorList}
-                </ul>
-            </div>
-        `;
+        const list = errors.map(e => `<li>${this.escapeHtml(e)}</li>`).join('');
+        DOM.outputArea.innerHTML = `<div class="alert alert-error"><strong>❌ Validation Errors:</strong><ul style="margin-top:10px;margin-left:20px;">${list}</ul></div>`;
     },
-    
-    /**
-     * Display workout plan - Updated for new custom format
-     */
+
     displayWorkoutPlan(plan) {
         let html = '<div class="workout-plan">';
-        
-        // Check if we have workoutGroups (new format)
         const workoutGroups = plan.workoutGroups || plan.workout_days || [];
-        
+
         if (workoutGroups.length === 0) {
-            html += '<p>No workout groups found in the plan.</p>';
-            html += '</div>';
+            html += '<p>No workout groups found in the plan.</p></div>';
             DOM.outputArea.innerHTML = html;
             return;
         }
-        
+
         html += `<h3>${workoutGroups.length}-Day Workout Plan</h3>`;
-        
+
         workoutGroups.forEach((group, index) => {
-            // Support both old and new format
             const groupName = group.groupName || group.day_name || `Day ${index + 1}`;
             const exercises = group.selectedExercises || group.main_workout || [];
-            
-            html += `
-                <div class="workout-day">
-                    <h3>${this.escapeHtml(groupName)}</h3>
-                    <p><strong>Total Exercises:</strong> ${exercises.length}</p>
-                    
-                    <h4>Exercises:</h4>
-            `;
-            
+
+            html += `<div class="workout-day"><h3>${this.escapeHtml(groupName)}</h3>
+                     <p><strong>Total Exercises:</strong> ${exercises.length}</p><h4>Exercises:</h4>`;
+
             exercises.forEach(exercise => {
-                // Support both old and new format
-                const exerciseName = exercise.exerciseName || exercise.name || 'Unknown Exercise';
+                const name         = exercise.exerciseName || exercise.name || 'Unknown Exercise';
                 const targetMuscles = exercise.targetMuscles || (exercise.target_muscles ? exercise.target_muscles.join(', ') : 'N/A');
-                const bodyPart = exercise.bodyPart || 'N/A';
-                const equipment = exercise.equipments || 'N/A';
-                
-                // Parse description for instructions
-                const description = exercise.description || '';
+                const bodyPart     = exercise.bodyPart || 'N/A';
+                const equipment    = exercise.equipments || 'N/A';
+                const description  = exercise.description || '';
                 const instructions = description.split('$$').map(s => s.trim()).filter(s => s);
-                
-                html += `
-                    <div class="exercise">
-                        <div class="exercise-name">${this.escapeHtml(exerciseName)}</div>
-                        <div class="exercise-details">
-                            <span>🎯 ${this.escapeHtml(targetMuscles)}</span>
-                            <span>💪 ${this.escapeHtml(bodyPart)}</span>
-                            <span>🏋️ ${this.escapeHtml(equipment)}</span>
-                        </div>
-                `;
-                
-                // Show instructions if available
+
+                html += `<div class="exercise">
+                    <div class="exercise-name">${this.escapeHtml(name)}</div>
+                    <div class="exercise-details">
+                        <span>🎯 ${this.escapeHtml(targetMuscles)}</span>
+                        <span>💪 ${this.escapeHtml(bodyPart)}</span>
+                        <span>🏋️ ${this.escapeHtml(equipment)}</span>
+                    </div>`;
+
                 if (instructions.length > 0) {
                     html += '<div class="exercise-instructions"><strong>Instructions:</strong><ol>';
-                    instructions.forEach(instruction => {
-                        html += `<li>${this.escapeHtml(instruction)}</li>`;
-                    });
+                    instructions.forEach(inst => { html += `<li>${this.escapeHtml(inst)}</li>`; });
                     html += '</ol></div>';
                 }
-                
-                // Show media if available
+
                 if (exercise.mediaUrl) {
-                    html += `<div class="exercise-media"><img src="${this.escapeHtml(exercise.mediaUrl)}" alt="${this.escapeHtml(exerciseName)}" style="max-width: 200px; border-radius: 8px;"></div>`;
+                    html += `<div class="exercise-media"><img src="${this.escapeHtml(exercise.mediaUrl)}" alt="${this.escapeHtml(name)}" style="max-width:200px;border-radius:8px;"></div>`;
                 }
-                
+
                 html += '</div>';
             });
-            
+
             html += '</div>';
         });
-        
+
         html += '</div>';
         DOM.outputArea.innerHTML = html;
     },
-    
-    /**
-     * Escape HTML to prevent XSS
-     */
+
     escapeHtml(text) {
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = String(text ?? '');
         return div.innerHTML;
     }
 };
@@ -729,75 +471,41 @@ const UI = {
 // Main Application Logic
 // ============================================
 const App = {
-    /**
-     * Initialize application
-     */
     init() {
         console.log('🏋️ Gym Workout RAG - Initializing...');
-        
-        // Fetch runtime host so local server URLs use the correct host
-        ModelConfig.loadRuntimeHost();
-
-        // Cache DOM elements
         DOM.init();
-        
-        // Set up event listeners
         this.setupEventListeners();
-        
-        // Initialize model options
-        ModelConfig.updateOptions();
-        
+        // Show first tab
+        ModelConfig.switchTab('gguf');
         console.log('✅ Application initialized successfully');
     },
-    
-    /**
-     * Set up event listeners
-     */
+
     setupEventListeners() {
-        // Model type change
-        const modelTypeSelect = document.getElementById('modelType');
-        if (modelTypeSelect) {
-            modelTypeSelect.addEventListener('change', () => ModelConfig.updateOptions());
-        }
-        
-        // Form submission
         if (DOM.workoutForm) {
-            DOM.workoutForm.addEventListener('submit', (e) => this.handleFormSubmit(e));
+            DOM.workoutForm.addEventListener('submit', e => this.handleFormSubmit(e));
         }
     },
-    
-    /**
-     * Handle form submission
-     */
+
     async handleFormSubmit(event) {
         event.preventDefault();
-        
-        if (AppState.isGenerating) {
-            console.log('⚠️ Generation already in progress');
-            return;
-        }
-        
+        if (AppState.isGenerating) return;
+
         try {
             AppState.isGenerating = true;
             DOM.generateBtn.disabled = true;
-            
-            // Collect and validate form data
+
             const formData = FormHandler.collectFormData();
-            const validationErrors = FormHandler.validate(formData);
-            
-            if (validationErrors.length > 0) {
-                UI.showValidationErrors(validationErrors);
+            const errors   = FormHandler.validate(formData);
+
+            if (errors.length > 0) {
+                UI.showValidationErrors(errors);
                 return;
             }
-            
-            // Show loading state
+
             UI.showLoading();
-            
-            // Call API
             console.log('📤 Sending request to API...');
             const response = await API.generateWorkout(formData);
-            
-            // Handle response
+
             if (response.success) {
                 console.log('✅ Workout plan generated successfully');
                 UI.displayWorkoutPlan(response.workout_plan);
@@ -805,7 +513,6 @@ const App = {
                 console.error('❌ API returned error:', response.message);
                 UI.showError(response.message || 'Failed to generate workout plan');
             }
-            
         } catch (error) {
             console.error('❌ Error generating workout:', error);
             UI.showError(error.message || 'An unexpected error occurred');
@@ -817,47 +524,23 @@ const App = {
 };
 
 // ============================================
-// File Browser Handlers
+// File Browser Handler
 // ============================================
-window.handleMLXDirectorySelect = (event) => {
-    const files = event.target.files;
-    if (files.length > 0) {
-        // Get the directory path from the first file
-        const filePath = files[0].webkitRelativePath || files[0].name;
-        // Extract directory path (remove filename)
-        const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
-        
-        // For MLX models, we need the full path
-        // Since we can't get absolute path from browser, we'll use the relative path
-        // and let the user adjust if needed
-        const modelPathInput = document.getElementById('mlxModelPath');
-        if (dirPath) {
-            // Show the relative path selected
-            modelPathInput.value = dirPath;
-            console.log('MLX model directory selected:', dirPath);
-        }
-    }
-};
-
 window.handleGGUFFileSelect = (event) => {
     const file = event.target.files[0];
-    if (file) {
-        // For GGUF, we just need the filename
-        // User will need to provide full path or we use the name
-        const modelPathInput = document.getElementById('ggufModelPath');
-        modelPathInput.value = file.name;
-        console.log('GGUF model file selected:', file.name);
-        
-        // Show alert about full path
-        const outputArea = document.getElementById('modelValidationOutput');
-        if (outputArea) {
-            outputArea.innerHTML = `
-                <div class="alert alert-info">
-                    <strong>📝 Note:</strong> File selected: ${file.name}<br>
-                    Please enter the full path to this file in the text field above.
-                </div>
-            `;
-        }
+    if (!file) return;
+    // Use webkitRelativePath or fallback; give user the filename so they can set the full path
+    const modelPathInput = document.getElementById('ggufModelPath');
+    // Use the file's full path if available (only works when served locally without sandboxing)
+    modelPathInput.value = file.name;
+    ModelConfig.clearValidation();
+
+    const outputArea = document.getElementById('modelValidationOutput');
+    if (outputArea) {
+        outputArea.innerHTML = `<div class="alert alert-info">
+            <strong>📝 File selected:</strong> ${file.name}<br>
+            If the path shown above is not the full absolute path, please type it in manually.
+        </div>`;
     }
 };
 
@@ -866,76 +549,23 @@ window.handleGGUFFileSelect = (event) => {
 // ============================================
 window.togglePasswordVisibility = (inputId, button) => {
     const input = document.getElementById(inputId);
-    if (input) {
-        if (input.type === 'password') {
-            input.type = 'text';
-            button.textContent = '🙈 Hide';
-        } else {
-            input.type = 'password';
-            button.textContent = '👁️ Show';
-        }
+    if (!input) return;
+    if (input.type === 'password') {
+        input.type = 'text';
+        button.textContent = '🙈 Hide';
+    } else {
+        input.type = 'password';
+        button.textContent = '👁️ Show';
     }
 };
 
 // ============================================
-// Global Functions (for inline event handlers)
+// Global function aliases (used by HTML onclick)
 // ============================================
-window.updateModelOptions = () => ModelConfig.updateOptions();
+window.updateModelOptions  = () => {};  // no-op, kept for safety
 window.proceedToWorkoutForm = () => Navigation.toWorkoutForm();
 window.backToModelSelection = () => Navigation.toModelSelection();
-window.generateWorkout = (e) => App.handleFormSubmit(e);
-
-/**
- * Fetch available models from OMLX server
- */
-window.fetchOMLXModels = async () => {
-    const statusDiv = document.getElementById('omlxModelFetchStatus');
-    const fetchBtn = document.getElementById('fetchOMLXModelsBtn');
-    
-    if (fetchBtn) {
-        fetchBtn.disabled = true;
-        fetchBtn.textContent = '🔄 Fetching Models...';
-    }
-    
-    if (statusDiv) {
-        statusDiv.innerHTML = '<div class="alert alert-info">Fetching available models...</div>';
-    }
-    
-    try {
-        const result = await ModelConfig.fetchOMLXModels();
-        
-        if (result.success) {
-            if (statusDiv) {
-                statusDiv.innerHTML = `
-                    <div class="alert alert-success">
-                        ✅ Found ${result.count} model(s). Select one from the dropdown below.
-                    </div>
-                `;
-            }
-        } else {
-            if (statusDiv) {
-                statusDiv.innerHTML = `
-                    <div class="alert alert-error">
-                        ❌ ${result.message}
-                    </div>
-                `;
-            }
-        }
-    } catch (error) {
-        if (statusDiv) {
-            statusDiv.innerHTML = `
-                <div class="alert alert-error">
-                    ❌ Error: ${error.message}
-                </div>
-            `;
-        }
-    } finally {
-        if (fetchBtn) {
-            fetchBtn.disabled = false;
-            fetchBtn.textContent = '🔄 Fetch Available Models';
-        }
-    }
-};
+window.generateWorkout      = (e) => App.handleFormSubmit(e);
 
 // ============================================
 // Initialize on DOM Ready
@@ -947,7 +577,7 @@ if (document.readyState === 'loading') {
 }
 
 // ============================================
-// Export for testing (if needed)
+// Export for testing
 // ============================================
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { App, ModelConfig, FormHandler, UI, API };

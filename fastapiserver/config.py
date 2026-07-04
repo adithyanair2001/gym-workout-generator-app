@@ -28,18 +28,14 @@ class Settings(BaseSettings):
     # LLM Configuration - Multiple Options
     # NOTE: Models are now loaded lazily (on-demand) to save memory
     # Set all to False to use dynamic model selection from UI
-    
-    # Option 1: Local MLX models (recommended for Mac)
-    use_mlx: bool = False  # Changed to False for lazy loading
-    mlx_model_path: str = "/Users/adithyanair/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit"
-    
-    # Option 2: Local GGUF models with LangChain
+
+    # Option 1: Local GGUF models with LangChain
     use_gguf: bool = False
     gguf_model_path: str = ""
     gguf_n_ctx: int = 4096  # Context window size
     gguf_n_gpu_layers: int = 0  # Number of layers to offload to GPU (0 = CPU only)
     
-    # Option 3 & 4: External LLM (Local servers or Public APIs)
+    # Option 2 & 3: External LLM (Local servers or Public APIs)
     # llm_base_url       — used when running locally (no Docker)
     # llm_base_url_docker — used inside Docker/Colima; set in .env as
     #                       LLM_BASE_URL_DOCKER=http://host.docker.internal:PORT/v1

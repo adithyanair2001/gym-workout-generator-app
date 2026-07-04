@@ -20,7 +20,6 @@ from fastapiserver.middleware import RequestIDMiddleware
 from fastapiserver.models.user_profile import UserProfile
 from fastapiserver.models.workout_plan import WorkoutPlan
 from fastapiserver.models.workout_request import WorkoutGenerationRequest
-from fastapiserver.services.database_tools import DatabaseTools
 from fastapiserver.services.exercisedb_client import ExerciseDBClient
 from fastapiserver.services.gguf_service import GGUFService
 from fastapiserver.services.llm_service import LLMService
@@ -28,15 +27,6 @@ from fastapiserver.services.rag_pipeline import RAGPipeline
 from fastapiserver.services.vector_store import VectorStoreService
 from fastapiserver.services.service_factory import ServiceFactory
 from fastapiserver.utils.logging_config import RequestIDFilter, setup_structured_logging
-
-
-def _get_mlx_agent_class():
-    """Return MLXAgentService class, or None if mlx is not available (non-Apple-Silicon)."""
-    try:
-        from fastapiserver.services.mlx_agent_service import MLXAgentService
-        return MLXAgentService
-    except (ImportError, ModuleNotFoundError):
-        return None
 
 # Configure structured logging
 settings_for_logging = get_settings()
@@ -57,15 +47,13 @@ exercise_client = None
 vector_store = None
 llm_service = None
 gguf_service = None
-mlx_agent = None
-database_tools = None
 rag_pipeline = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown events."""
-    global exercise_client, vector_store, llm_service, gguf_service, mlx_agent, database_tools, rag_pipeline
+    global exercise_client, vector_store, llm_service, gguf_service, rag_pipeline
     
     settings = get_settings()
     
@@ -116,15 +104,12 @@ async def lifespan(app: FastAPI):
         # Note: LLM services are now initialized lazily via ServiceFactory
         # Models are only loaded when actually needed for generation
         # This prevents unnecessary memory usage at startup
-        
+
         logger.info("=" * 60)
         logger.info("LLM Configuration (Lazy Loading Enabled)")
         logger.info("=" * 60)
-        
-        if settings.use_mlx:
-            logger.info(f"✓ MLX mode configured: {settings.mlx_model_path}")
-            logger.info("  Model will load on first generation request")
-        elif settings.use_gguf:
+
+        if settings.use_gguf:
             logger.info(f"✓ GGUF mode configured: {settings.gguf_model_path}")
             logger.info("  Model will load on first generation request")
         else:
@@ -138,10 +123,8 @@ async def lifespan(app: FastAPI):
         logger.info("💡 Models load on-demand to save memory")
         logger.info("   Use dynamic model selection in UI for flexibility")
         logger.info("=" * 60)
-        
+
         # Services will be created by ServiceFactory when needed
-        mlx_agent = None
-        database_tools = None
         llm_service = None
         gguf_service = None
         rag_pipeline = None
@@ -161,13 +144,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down application...")
     logger.info("=" * 60)
     
-    # Cleanup MLX agent if it was initialized
-    if mlx_agent:
-        logger.info("Cleaning up MLX agent...")
-        mlx_agent.cleanup()
-        logger.info("✓ MLX agent cleaned up")
-    
-    # Clear service factory cache (cleans up any cached MLX services)
+    # Clear service factory cache
     logger.info("Clearing service factory cache...")
     ServiceFactory.clear_cache()
     logger.info("✓ Service factory cache cleared")
@@ -244,10 +221,7 @@ async def health_check():
         vector_db_stats = vector_store.get_collection_stats() if vector_store else {"status": "not_initialized"}
         
         # Check LLM status based on configuration
-        if settings.use_mlx:
-            llm_mode = "mlx_agent"
-            llm_status = "ready" if mlx_agent else "not_initialized"
-        elif settings.use_gguf:
+        if settings.use_gguf:
             llm_mode = "gguf_langchain"
             llm_status = "ready" if gguf_service else "not_initialized"
         else:
@@ -264,7 +238,6 @@ async def health_check():
                 "vector_store": vector_store is not None,
                 "llm_service": llm_service is not None,
                 "gguf_service": gguf_service is not None,
-                "mlx_agent": mlx_agent is not None,
                 "rag_pipeline": rag_pipeline is not None
             }
         }
@@ -342,78 +315,17 @@ async def generate_workout(request: Request, workout_request: WorkoutGenerationR
         )
         
         try:
-            # Determine if this is an MLX agent or RAG pipeline
-            _MLXAgentService = _get_mlx_agent_class()
-            if _MLXAgentService and isinstance(service, _MLXAgentService):
-                logger.info("Generating workout plan with MLX agent...")
-                # Generate with MLX agent
-                raw_response = service.generate_workout_plan(user_profile)
-                
-                # Parse JSON response
-                workout_data = service.parse_json_response(raw_response)
-                
-                # Convert to WorkoutPlan model in custom format
-                from fastapiserver.models.workout_plan import WorkoutDay, Exercise
-                
-                workout_groups = []
-                for day_data in workout_data.get('workout_days', []):
-                    selected_exercises = []
-                    for ex_data in day_data.get('main_workout', []):
-                        # Format instructions with $$ separator
-                        instructions = ex_data.get('instructions', [])
-                        if isinstance(instructions, list):
-                            description = " $$ ".join(instructions)
-                        else:
-                            description = str(instructions)
-                        
-                        # Get target muscles
-                        target_muscles = ex_data.get('target_muscles', [])
-                        if isinstance(target_muscles, list):
-                            target_muscles_str = target_muscles[0] if target_muscles else ''
-                        else:
-                            target_muscles_str = str(target_muscles)
-                        
-                        exercise = Exercise(
-                            exerciseDbId=ex_data.get('exercise_id', ''),
-                            exerciseName=ex_data.get('name', ''),
-                            bodyPart='Unknown',  # Will be filled by RAG pipeline
-                            equipments='Unknown',  # Will be filled by RAG pipeline
-                            targetMuscles=target_muscles_str,
-                            secondaryMuscles='',
-                            mediaUrl=ex_data.get('gif_url', ''),
-                            description=description
-                        )
-                        selected_exercises.append(exercise)
-                    
-                    workout_group = WorkoutDay(
-                        groupName=day_data.get('day_name', f"Day {day_data.get('day_number', 1)}"),
-                        isAiGenerated=True,
-                        selectedExercises=selected_exercises
-                    )
-                    workout_groups.append(workout_group)
-                
-                workout_plan = WorkoutPlan(
-                    workoutGroups=workout_groups
-                )
-            else:
-                logger.info("Generating workout plan with RAG pipeline...")
-                # Create RAG pipeline with the service
-                pipeline = RAGPipeline(vector_store, service)
-                # Generate workout plan with traditional RAG
-                workout_plan = await pipeline.generate_workout_plan(user_profile)
+            logger.info("Generating workout plan with RAG pipeline...")
+            pipeline = RAGPipeline(vector_store, service)
+            workout_plan = await pipeline.generate_workout_plan(user_profile)
             
             logger.info(f"Successfully generated workout plan with {len(workout_plan.workoutGroups)} workout groups")
             
             # Add metadata about the model used
             model_provider = "unknown"
             model_name = "unknown"
-            
-            _MLXAgentService = _get_mlx_agent_class()
-            if _MLXAgentService and isinstance(service, _MLXAgentService):
-                model_provider = "mlx"
-                mlx_path = (llm_config.mlx_model_path if llm_config else None) or "unknown"
-                model_name = mlx_path.split("/")[-1]
-            elif isinstance(service, GGUFService):
+
+            if isinstance(service, GGUFService):
                 model_provider = "gguf"
                 gguf_path = (llm_config.gguf_model_path if llm_config else None) or "unknown"
                 model_name = gguf_path.split("/")[-1]
@@ -450,12 +362,7 @@ async def generate_workout(request: Request, workout_request: WorkoutGenerationR
             
         finally:
             # Cleanup: Unload model after generation is complete
-            _MLXAgentService = _get_mlx_agent_class()
-            if _MLXAgentService and isinstance(service, _MLXAgentService):
-                logger.info("Cleaning up MLX model from memory...")
-                service.cleanup()
-                logger.info("✓ MLX model unloaded successfully")
-            elif isinstance(service, GGUFService):
+            if isinstance(service, GGUFService):
                 logger.info("Cleaning up GGUF model from memory...")
                 # GGUF models are managed by llama-cpp-python, cleanup happens automatically
                 # But we can explicitly delete the reference to help garbage collection
@@ -473,60 +380,6 @@ async def generate_workout(request: Request, workout_request: WorkoutGenerationR
     except Exception as e:
         logger.error(f"Error generating workout: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate workout plan: {str(e)}")
-
-@app.post("/api/v1/models/unload")
-async def unload_model():
-    """
-    Manually unload the currently loaded model from memory.
-    
-    This endpoint allows explicit cleanup of models to free up memory.
-    Useful after workout generation or when switching between models.
-    
-    Returns:
-        dict: Status of the unload operation
-    """
-    try:
-        settings = get_settings()
-        unloaded = False
-        model_type = "none"
-        
-        # Check which service is active and unload it
-        if settings.use_mlx and mlx_agent:
-            logger.info("Unloading MLX model...")
-            mlx_agent.cleanup()
-            model_type = "MLX"
-            unloaded = True
-            logger.info("✓ MLX model unloaded successfully")
-            
-        elif settings.use_gguf and gguf_service:
-            logger.info("Unloading GGUF model...")
-            # GGUF cleanup - delete reference and force garbage collection
-            import gc
-            del globals()['gguf_service']
-            gc.collect()
-            model_type = "GGUF"
-            unloaded = True
-            logger.info("✓ GGUF model reference cleared")
-            
-        else:
-            # API-based services don't need unloading
-            model_type = "API-based"
-            logger.info("No local model to unload (using API-based service)")
-        
-        return {
-            "success": True,
-            "message": f"{model_type} model unloaded successfully" if unloaded else "No local model loaded",
-            "model_type": model_type,
-            "unloaded": unloaded,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Error unloading model: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to unload model: {str(e)}"
-        )
 
 
 
@@ -613,15 +466,9 @@ async def list_models():
 
     try:
         settings = get_settings()
-        
-        # MLX / GGUF — no remote server to query
-        if settings.use_mlx:
-            return {
-                "provider": "mlx",
-                "message": "MLX uses local models. Current model path configured.",
-                "current_model": settings.mlx_model_path
-            }
-        elif settings.use_gguf:
+
+        # GGUF — no remote server to query
+        if settings.use_gguf:
             return {
                 "provider": "gguf",
                 "message": "GGUF uses local models. Current model path configured.",

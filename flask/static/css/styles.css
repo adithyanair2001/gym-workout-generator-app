@@ -290,13 +290,71 @@ body {
     color: #1e40af;
 }
 
-/* Model Options */
+/* Model Options (legacy, kept for any remaining uses) */
 .model-options {
     background: var(--bg-secondary);
     padding: 20px;
     border-radius: var(--border-radius-md);
     margin-top: 15px;
     border: 2px dashed var(--border-color);
+}
+
+/* Option Tabs */
+.option-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0;
+}
+
+.option-tab {
+    padding: 10px 20px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 0.95em;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    border-radius: var(--border-radius-sm) var(--border-radius-sm) 0 0;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.option-tab:hover {
+    color: var(--primary-color);
+}
+
+.option-tab.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    font-weight: 600;
+}
+
+/* Tab panels */
+.tab-panel {
+    animation: fadeIn 0.2s ease;
+}
+
+.tab-desc {
+    color: var(--text-secondary);
+    font-size: 0.93em;
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+.form-text {
+    color: var(--text-tertiary);
+    font-size: 0.85em;
+    display: block;
+    margin-top: 5px;
+    line-height: 1.4;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Code Elements */

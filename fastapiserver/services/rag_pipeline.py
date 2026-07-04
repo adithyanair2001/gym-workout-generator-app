@@ -239,7 +239,7 @@ Suitable for {user_profile.gym_days_per_week} days per week training with {user_
                         equipment = meta.get('equipment', 'Unknown')
                         
                         # Get body part
-                        body_part = meta.get('body_part', 'Unknown')
+                        body_part = meta.get('body_parts', 'Unknown')
                         
                         exercise = Exercise(
                             exerciseDbId=ex_id,

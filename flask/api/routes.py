@@ -15,455 +15,341 @@ logger = logging.getLogger(__name__)
 # Configuration - Use environment variable with fallback
 FASTAPI_URL = os.getenv("FASTAPI_URL", "http://localhost:7501")
 
+# Base URLs for online providers
+_ONLINE_BASE_URLS = {
+    "openai":    "https://api.openai.com/v1",
+    "anthropic": "https://api.anthropic.com/v1",
+    "groq":      "https://api.groq.com/openai/v1",
+    "gemini":    "https://generativelanguage.googleapis.com/v1beta/openai",
+}
+
+
+# ---------------------------------------------------------------------------
+# /api/validate-model  — only used for GGUF path validation now
+# ---------------------------------------------------------------------------
 
 @api_bp.route('/validate-model', methods=['POST'])
 def validate_model():
-    """
-    Validate model configuration and test connection.
-    
-    Expected JSON payload:
-    {
-        "model_type": str,
-        "llm_base_url": str (optional),
-        "llm_model": str (optional),
-        "llm_api_key": str (optional),
-        "mlx_model_path": str (optional),
-        "gguf_model_path": str (optional)
-    }
-    
-    Returns:
-    {
-        "success": bool,
-        "message": str,
-        "details": {...}
-    }
-    """
+    """Validate GGUF model file path."""
     try:
-        data = request.json
-        model_type = data.get('model_type')
-        
-        if model_type == 'mlx':
-            return _validate_mlx_model(data)
-        elif model_type == 'omlx':
-            return _validate_omlx_server(data)
-        elif model_type == 'gguf':
+        data = request.json or {}
+        model_type = data.get('model_type', '')
+
+        if model_type == 'gguf':
             return _validate_gguf_model(data)
-        elif model_type == 'local_server':
-            return _validate_local_server(data)
-        elif model_type in ['openai', 'anthropic', 'groq']:
-            return _validate_public_api(data, model_type)
-        else:
-            return jsonify({
-                "success": False,
-                "message": f"Unknown model type: {model_type}"
-            }), 400
-            
+
+        # Anything else: respond success (local/online already verified via /fetch-models)
+        return jsonify({"success": True, "message": "Configuration accepted."})
+
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Validation error: {str(e)}"
-        }), 500
-
-
-def _validate_mlx_model(data):
-    """Validate MLX model path exists."""
-    import os
-    
-    model_path = data.get('mlx_model_path', '')
-    
-    if not model_path:
-        return jsonify({
-            "success": False,
-            "message": "MLX model path is required"
-        }), 400
-    
-    # Check if path exists
-    if not os.path.exists(model_path):
-        return jsonify({
-            "success": False,
-            "message": f"MLX model not found at: {model_path}",
-            "details": {
-                "path": model_path,
-                "exists": False
-            }
-        }), 404
-    
-    # Check if it's a directory with required files
-    if not os.path.isdir(model_path):
-        return jsonify({
-            "success": False,
-            "message": "MLX model path must be a directory"
-        }), 400
-    
-    return jsonify({
-        "success": True,
-        "message": "MLX model found and accessible",
-        "details": {
-            "path": model_path,
-            "exists": True,
-            "type": "mlx"
-        }
-    })
-
-
-def _validate_omlx_server(data):
-    """Validate OMLX server connection."""
-    server_url = data.get('llm_base_url', '')
-    model_name = data.get('llm_model', '')
-    api_key = data.get('llm_api_key', '')
-    
-    if not server_url:
-        return jsonify({
-            "success": False,
-            "message": "OMLX server URL is required"
-        }), 400
-    
-    try:
-        # Prepare headers with API key if provided
-        headers = {}
-        if api_key:
-            headers['Authorization'] = f'Bearer {api_key}'
-        
-        # Test connection to OMLX server
-        response = requests.get(f"{server_url}/models", headers=headers, timeout=5)
-        
-        if response.status_code == 200:
-            models = response.json()
-            return jsonify({
-                "success": True,
-                "message": "OMLX server is accessible and authenticated" if api_key else "OMLX server is accessible",
-                "details": {
-                    "server_url": server_url,
-                    "model": model_name,
-                    "authenticated": bool(api_key),
-                    "available_models": models.get('data', [])
-                }
-            })
-        elif response.status_code == 401:
-            return jsonify({
-                "success": False,
-                "message": "OMLX server requires authentication. Please provide an API key.",
-                "details": {
-                    "hint": "Enter your OMLX API key in the 'API Key (optional)' field"
-                }
-            }), 401
-        else:
-            return jsonify({
-                "success": False,
-                "message": f"OMLX server returned status {response.status_code}"
-            }), response.status_code
-            
-    except requests.exceptions.ConnectionError:
-        return jsonify({
-            "success": False,
-            "message": "Cannot connect to OMLX server. Make sure it's running.",
-            "details": {
-                "server_url": server_url,
-                "hint": "Run: omlx serve --model <model-name> --port 8000"
-            }
-        }), 503
-    except requests.exceptions.Timeout:
-        return jsonify({
-            "success": False,
-            "message": "Connection to OMLX server timed out"
-        }), 504
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Error connecting to OMLX server: {str(e)}"
-        }), 500
+        return jsonify({"success": False, "message": f"Validation error: {str(e)}"}), 500
 
 
 def _validate_gguf_model(data):
-    """Validate GGUF model path exists."""
-    import os
-    
-    model_path = data.get('gguf_model_path', '')
-    
+    """Check that the GGUF file path exists and has the right extension."""
+    model_path = (data.get('gguf_model_path') or '').strip()
+
     if not model_path:
-        return jsonify({
-            "success": False,
-            "message": "GGUF model path is required"
-        }), 400
-    
+        return jsonify({"success": False, "message": "GGUF model path is required"}), 400
+
+    if not model_path.endswith('.gguf'):
+        return jsonify({"success": False, "message": "File must have a .gguf extension"}), 400
+
     if not os.path.exists(model_path):
         return jsonify({
             "success": False,
             "message": f"GGUF model not found at: {model_path}",
-            "details": {
-                "path": model_path,
-                "exists": False
-            }
+            "details": {"path": model_path, "exists": False}
         }), 404
-    
-    if not model_path.endswith('.gguf'):
-        return jsonify({
-            "success": False,
-            "message": "File must have .gguf extension"
-        }), 400
-    
+
     return jsonify({
         "success": True,
-        "message": "GGUF model found and accessible",
-        "details": {
-            "path": model_path,
-            "exists": True,
-            "type": "gguf"
-        }
+        "message": f"GGUF model found: {os.path.basename(model_path)}",
+        "details": {"path": model_path, "exists": True, "type": "gguf"}
     })
 
 
-def _validate_local_server(data):
-    """Validate local server (LM Studio/OLLAMA) connection."""
-    server_url = data.get('llm_base_url', '')
-    
-    if not server_url:
-        return jsonify({
-            "success": False,
-            "message": "Server URL is required"
-        }), 400
-    
-    try:
-        # Test connection to local server
-        response = requests.get(f"{server_url}/models", timeout=5)
-        
-        if response.status_code == 200:
-            models = response.json()
-            return jsonify({
-                "success": True,
-                "message": "Local server is accessible",
-                "details": {
-                    "server_url": server_url,
-                    "available_models": models.get('data', [])
-                }
-            })
-        else:
-            return jsonify({
-                "success": False,
-                "message": f"Server returned status {response.status_code}"
-            }), response.status_code
-            
-    except requests.exceptions.ConnectionError:
-        return jsonify({
-            "success": False,
-            "message": "Cannot connect to local server. Make sure LM Studio or OLLAMA is running.",
-            "details": {
-                "server_url": server_url,
-                "hint": "Start LM Studio or run: ollama serve"
-            }
-        }), 503
-    except requests.exceptions.Timeout:
-        return jsonify({
-            "success": False,
-            "message": "Connection to server timed out"
-        }), 504
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Error connecting to server: {str(e)}"
-        }), 500
+# ---------------------------------------------------------------------------
+# /api/fetch-models  — connect to local or online provider, return model list
+# ---------------------------------------------------------------------------
 
+@api_bp.route('/fetch-models', methods=['POST'])
+def fetch_models():
+    """
+    Connect to a local or online LLM provider and return available models.
 
-def _validate_public_api(data, model_type):
-    """Validate public API (OpenAI/Anthropic/Groq) credentials."""
-    api_key = data.get('llm_api_key', '')
-    model_name = data.get('llm_model', '')
-    
-    if not api_key:
-        return jsonify({
-            "success": False,
-            "message": f"{model_type.title()} API key is required"
-        }), 400
-    
-    # API endpoint mapping
-    endpoints = {
-        'openai': 'https://api.openai.com/v1/models',
-        'anthropic': 'https://api.anthropic.com/v1/messages',
-        'groq': 'https://api.groq.com/openai/v1/models'
+    POST JSON payload:
+    {
+        "provider_type": "local" | "online",
+
+        # For local:
+        "base_url": str,          # e.g. "http://127.0.0.1:1234/v1"
+        "api_key":  str | null,   # optional
+
+        # For online:
+        "provider": "openai" | "anthropic" | "groq" | "gemini",
+        "api_key":  str
     }
-    
-    headers = {}
-    if model_type == 'openai' or model_type == 'groq':
-        headers['Authorization'] = f'Bearer {api_key}'
-    elif model_type == 'anthropic':
-        headers['x-api-key'] = api_key
-        headers['anthropic-version'] = '2023-06-01'
-    
+
+    Returns:
+    {
+        "success": bool,
+        "models": [{"id": str}, ...],
+        "message": str   (on error)
+    }
+    """
     try:
-        # Test API key with a simple request
-        response = requests.get(
-            endpoints[model_type],
-            headers=headers,
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            return jsonify({
-                "success": True,
-                "message": f"{model_type.title()} API key is valid",
-                "details": {
-                    "model": model_name,
-                    "provider": model_type
-                }
-            })
-        elif response.status_code == 401:
+        data = request.json or {}
+        provider_type = data.get('provider_type', '')
+
+        if provider_type == 'local':
+            return _fetch_local_models(data)
+        elif provider_type == 'online':
+            return _fetch_online_models(data)
+        else:
+            return jsonify({"success": False, "message": f"Unknown provider_type: '{provider_type}'"}), 400
+
+    except Exception as e:
+        logger.exception("Unexpected error in /fetch-models")
+        return jsonify({"success": False, "message": f"Unexpected error: {str(e)}"}), 500
+
+
+def _fetch_local_models(data):
+    """Query an OpenAI-compatible /v1/models endpoint on a local server."""
+    base_url = (data.get('base_url') or '').rstrip('/')
+    api_key  = (data.get('api_key') or '').strip()
+
+    if not base_url:
+        return jsonify({"success": False, "message": "base_url is required"}), 400
+
+    headers = {}
+    if api_key:
+        headers['Authorization'] = f'Bearer {api_key}'
+
+    try:
+        resp = requests.get(f"{base_url}/models", headers=headers, timeout=8)
+
+        if resp.status_code == 200:
+            models = resp.json().get('data', [])
+            if not models:
+                return jsonify({
+                    "success": False,
+                    "message": "Server is reachable but returned no models. Make sure a model is loaded."
+                }), 200
+            return jsonify({"success": True, "models": models, "count": len(models)})
+
+        elif resp.status_code == 401:
             return jsonify({
                 "success": False,
-                "message": f"Invalid {model_type.title()} API key"
+                "message": "Server requires authentication. Please provide an API key.",
+                "details": {"hint": "Enter the server's API key in the 'API Key' field"}
             }), 401
+
         else:
             return jsonify({
                 "success": False,
-                "message": f"API returned status {response.status_code}: {response.text}"
-            }), response.status_code
-            
+                "message": f"Server returned HTTP {resp.status_code}."
+            }), resp.status_code
+
     except requests.exceptions.ConnectionError:
         return jsonify({
             "success": False,
-            "message": f"Cannot connect to {model_type.title()} API. Check your internet connection."
+            "message": f"Cannot connect to {base_url}. Is the server running?",
+            "details": {"hint": "LM Studio: enable 'Serve on Local Network'. OLLAMA: run 'ollama serve'."}
         }), 503
     except requests.exceptions.Timeout:
-        return jsonify({
-            "success": False,
-            "message": f"Connection to {model_type.title()} API timed out"
-        }), 504
+        return jsonify({"success": False, "message": "Connection timed out."}), 504
     except Exception as e:
+        return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
+
+
+def _fetch_online_models(data):
+    """Verify an API key and fetch available models from an online provider."""
+    provider = (data.get('provider') or '').lower()
+    api_key  = (data.get('api_key') or '').strip()
+
+    if not provider:
+        return jsonify({"success": False, "message": "provider is required"}), 400
+    if not api_key:
+        return jsonify({"success": False, "message": "api_key is required"}), 400
+    if provider not in _ONLINE_BASE_URLS:
+        return jsonify({"success": False, "message": f"Unknown provider: '{provider}'"}), 400
+
+    base_url = _ONLINE_BASE_URLS[provider]
+
+    # Build auth headers (Anthropic uses a different header)
+    if provider == 'anthropic':
+        headers = {
+            'x-api-key': api_key,
+            'anthropic-version': '2023-06-01'
+        }
+    else:
+        headers = {'Authorization': f'Bearer {api_key}'}
+
+    try:
+        if provider == 'anthropic':
+            # Anthropic doesn't have a /models list endpoint; use a minimal
+            # messages call with max_tokens=1 to verify the key, then return
+            # a curated static model list.
+            verify_resp = requests.post(
+                f"{base_url}/messages",
+                headers={**headers, 'content-type': 'application/json'},
+                json={"model": "claude-3-haiku-20240307", "max_tokens": 1,
+                      "messages": [{"role": "user", "content": "hi"}]},
+                timeout=10
+            )
+            if verify_resp.status_code in (200, 400):
+                # 400 = bad request but key is valid (model may not exist);
+                # treat both as "key accepted"
+                models = [
+                    {"id": "claude-3-5-sonnet-20241022"},
+                    {"id": "claude-3-5-haiku-20241022"},
+                    {"id": "claude-3-opus-20240229"},
+                    {"id": "claude-3-haiku-20240307"},
+                ]
+                return jsonify({"success": True, "models": models, "count": len(models)})
+            elif verify_resp.status_code == 401:
+                return jsonify({"success": False, "message": "Invalid Anthropic API key."}), 401
+            else:
+                return jsonify({
+                    "success": False,
+                    "message": f"Anthropic API returned HTTP {verify_resp.status_code}."
+                }), verify_resp.status_code
+
+        elif provider == 'gemini':
+            # Google's OpenAI-compatible endpoint supports /models
+            resp = requests.get(f"{base_url}/models", headers=headers, timeout=10)
+            if resp.status_code == 200:
+                raw = resp.json().get('data', [])
+                # Filter to text-generation models only
+                models = [m for m in raw if 'gemini' in m.get('id', '').lower()]
+                if not models:
+                    models = raw  # fall back to full list if filter yields nothing
+                return jsonify({"success": True, "models": models, "count": len(models)})
+            elif resp.status_code == 401:
+                return jsonify({"success": False, "message": "Invalid Google Gemini API key."}), 401
+            else:
+                return jsonify({
+                    "success": False,
+                    "message": f"Gemini API returned HTTP {resp.status_code}."
+                }), resp.status_code
+
+        else:
+            # OpenAI / Groq — standard /v1/models endpoint
+            resp = requests.get(f"{base_url}/models", headers=headers, timeout=10)
+            if resp.status_code == 200:
+                models = resp.json().get('data', [])
+                return jsonify({"success": True, "models": models, "count": len(models)})
+            elif resp.status_code == 401:
+                return jsonify({"success": False, "message": f"Invalid {provider.title()} API key."}), 401
+            else:
+                return jsonify({
+                    "success": False,
+                    "message": f"{provider.title()} API returned HTTP {resp.status_code}."
+                }), resp.status_code
+
+    except requests.exceptions.ConnectionError:
         return jsonify({
             "success": False,
-            "message": f"Error validating API key: {str(e)}"
-        }), 500
+            "message": f"Cannot connect to {provider.title()} API. Check your internet connection."
+        }), 503
+    except requests.exceptions.Timeout:
+        return jsonify({"success": False, "message": f"{provider.title()} API timed out."}), 504
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
 
+
+# ---------------------------------------------------------------------------
+# /api/generate
+# ---------------------------------------------------------------------------
 
 @api_bp.route('/generate', methods=['POST'])
 def generate_workout():
     """
     Generate workout plan by calling FastAPI backend.
-    
-    Expected JSON payload:
+
+    POST JSON payload:
     {
-        "model_config": {...},  # Now actually used!
-        "height": float,
-        "weight": float,
-        "age": int,
-        "gender": str,
-        "fitness_level": str,
-        "days_per_week": int,
-        "session_duration": int,
-        "goals": list[str] or str,
-        "equipment": list[str] or str,
-        "injuries": str (optional),
-        "preferred_split": str
-    }
-    
-    Returns:
-    {
-        "success": bool,
-        "workout_plan": {...} or "message": str
+        "model_config": {
+            "model_type": str,
+            ...provider-specific fields...
+        },
+        "height": float, "weight": float, "age": int,
+        "gender": str, "fitness_level": str,
+        "days_per_week": int, "session_duration": int,
+        "goals": list[str], "equipment": list[str] or str,
+        "injuries": str (optional), "preferred_split": str
     }
     """
     try:
         data = request.json
-        
+
         # Validate input data
         is_valid, error_message = validate_user_profile(data)
         if not is_valid:
-            return jsonify({
-                "success": False,
-                "message": f"Validation error: {error_message}"
-            }), 400
-        
-        # Sanitize and prepare user profile - match backend model field names
+            return jsonify({"success": False, "message": f"Validation error: {error_message}"}), 400
+
         user_profile = {
-            "height": float(data['height']),
-            "weight": float(data['weight']),
-            "age": int(data['age']),
-            "gender": data['gender'],
-            "fitness_level": data['fitness_level'],
-            "gym_days_per_week": int(data['days_per_week']),
+            "height":                float(data['height']),
+            "weight":                float(data['weight']),
+            "age":                   int(data['age']),
+            "gender":                data['gender'],
+            "fitness_level":         data['fitness_level'],
+            "gym_days_per_week":     int(data['days_per_week']),
             "workout_duration_minutes": int(data['session_duration']),
-            "goals": _parse_list_field(data.get('goals', [])),
-            "available_equipment": _parse_list_field(data.get('equipment', [])),
-            "injuries_limitations": _parse_optional_list_field(data.get('injuries')),
-            "preferred_split": data.get('preferred_split', 'full_body')
+            "goals":                 _parse_list_field(data.get('goals', [])),
+            "available_equipment":   _parse_list_field(data.get('equipment', [])),
+            "injuries_limitations":  _parse_optional_list_field(data.get('injuries')),
+            "preferred_split":       data.get('preferred_split', 'full_body')
         }
-        
-        # Prepare request payload with optional model configuration
-        request_payload = {
-            "user_profile": user_profile
-        }
-        
-        # Add model configuration if provided
+
+        request_payload = {"user_profile": user_profile}
+
         model_config = data.get('model_config')
         if model_config:
-            # Clean up the model config - remove empty/None values
-            cleaned_config = {k: v for k, v in model_config.items() if v is not None and v != ''}
-            if cleaned_config:
-                request_payload["llm_config"] = cleaned_config
-                logger.info(f"Using model configuration: {cleaned_config.get('model_type', 'unknown')}")
+            cleaned = {k: v for k, v in model_config.items() if v is not None and v != ''}
+            if cleaned:
+                request_payload["llm_config"] = cleaned
+                logger.info(f"Using model configuration: {cleaned.get('model_type', 'unknown')}")
         else:
             logger.info("No model configuration provided, using .env defaults")
-        
-        # Call FastAPI backend with new request format
+
         response = requests.post(
             f"{FASTAPI_URL}/api/v1/generate",
             json=request_payload,
-            timeout=600  # 10 minutes timeout for LLM generation
+            timeout=600
         )
-        
+
         if response.status_code == 200:
-            return jsonify({
-                "success": True,
-                "workout_plan": response.json()
-            })
+            return jsonify({"success": True, "workout_plan": response.json()})
         else:
-            return jsonify({
-                "success": False,
-                "message": f"Backend error: {response.text}"
-            }), response.status_code
-            
+            return jsonify({"success": False, "message": f"Backend error: {response.text}"}), response.status_code
+
     except requests.exceptions.Timeout:
         return jsonify({
             "success": False,
-            "message": "Request timeout after 10 minutes. The model may be too slow. Try using a smaller model or LM Studio instead."
+            "message": "Request timed out after 10 minutes. Try a smaller or faster model."
         }), 504
-        
     except requests.exceptions.ConnectionError:
         return jsonify({
             "success": False,
-            "message": "Cannot connect to backend server. Please ensure the FastAPI server is running."
+            "message": "Cannot connect to the backend server. Is the FastAPI server running?"
         }), 503
-        
     except KeyError as e:
-        return jsonify({
-            "success": False,
-            "message": f"Missing required field: {str(e)}"
-        }), 400
-        
+        return jsonify({"success": False, "message": f"Missing required field: {e}"}), 400
     except ValueError as e:
-        return jsonify({
-            "success": False,
-            "message": f"Invalid value: {str(e)}"
-        }), 400
-        
+        return jsonify({"success": False, "message": f"Invalid value: {e}"}), 400
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Unexpected error: {str(e)}"
-        }), 500
+        return jsonify({"success": False, "message": f"Unexpected error: {e}"}), 500
 
+
+# ---------------------------------------------------------------------------
+# /api/config  — exposes runtime LLM host for Docker vs local
+# ---------------------------------------------------------------------------
 
 @api_bp.route('/config', methods=['GET'])
 def get_config():
-    """
-    Expose runtime LLM host to the frontend so the UI can build
-    provider URLs dynamically using the correct host for the runtime
-    (127.0.0.1 locally, host.docker.internal inside Docker/Colima).
-
-    Returns:
-    {
-        "llm_host": "127.0.0.1"  | "host.docker.internal" | ...
-    }
-    """
+    """Return the runtime LLM host so the frontend can build provider URLs."""
     try:
         response = requests.get(f"{FASTAPI_URL}/api/v1/config", timeout=5)
         return jsonify(response.json())
@@ -471,176 +357,91 @@ def get_config():
         return jsonify({"llm_host": "127.0.0.1"})
 
 
+# ---------------------------------------------------------------------------
+# /api/health
+# ---------------------------------------------------------------------------
+
 @api_bp.route('/health', methods=['GET'])
 def health_check():
-    """
-    Check health of both frontend and backend services.
-    
-    Returns:
-    {
-        "frontend": "healthy",
-        "backend": {...}
-    }
-    """
+    """Check health of both frontend and backend services."""
     try:
-        # Check backend health
         response = requests.get(f"{FASTAPI_URL}/health", timeout=5)
-        backend_health = response.json()
-        
-        return jsonify({
-            "frontend": "healthy",
-            "backend": backend_health
-        })
+        return jsonify({"frontend": "healthy", "backend": response.json()})
     except requests.exceptions.RequestException as e:
         return jsonify({
             "frontend": "healthy",
-            "backend": {
-                "status": "unhealthy",
-                "error": str(e)
-            }
+            "backend": {"status": "unhealthy", "error": str(e)}
         }), 503
 
+
+# ---------------------------------------------------------------------------
+# /api/models  — legacy endpoint (kept for compatibility)
+# ---------------------------------------------------------------------------
 
 @api_bp.route('/models', methods=['GET', 'POST'])
 def list_models():
     """
     List available models from the LLM provider.
-    
-    GET: Uses backend's default configuration from .env
-    POST: Accepts custom base_url and api_key to fetch models dynamically
-    
-    POST JSON payload:
-    {
-        "base_url": str,
-        "api_key": str (optional)
-    }
-    
-    Returns:
-    {
-        "success": bool,
-        "provider": str,
-        "models": [...] or "message": str
-    }
+
+    GET: proxies to FastAPI backend default config.
+    POST: { "base_url": str, "api_key": str (optional) }
     """
     try:
         if request.method == 'POST':
-            # POST request with custom configuration
-            data = request.json
+            data = request.json or {}
             base_url = data.get('base_url')
-            api_key = data.get('api_key')
-            
+            api_key  = data.get('api_key')
+
             if not base_url:
-                return jsonify({
-                    "success": False,
-                    "message": "base_url is required"
-                }), 400
-            
-            # Prepare headers with API key if provided
+                return jsonify({"success": False, "message": "base_url is required"}), 400
+
             headers = {}
             if api_key:
                 headers['Authorization'] = f'Bearer {api_key}'
-            
-            # Fetch models directly from the provided URL
+
             try:
-                response = requests.get(f"{base_url}/models", headers=headers, timeout=10)
-                
-                if response.status_code == 200:
-                    models_data = response.json()
-                    models = models_data.get('data', [])
-                    
-                    return jsonify({
-                        "success": True,
-                        "provider": "omlx",
-                        "models": models
-                    })
-                elif response.status_code == 401:
-                    return jsonify({
-                        "success": False,
-                        "message": "Authentication failed. Please check your API key."
-                    }), 401
+                resp = requests.get(f"{base_url}/models", headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    models = resp.json().get('data', [])
+                    return jsonify({"success": True, "provider": "local", "models": models})
+                elif resp.status_code == 401:
+                    return jsonify({"success": False, "message": "Authentication failed."}), 401
                 else:
-                    return jsonify({
-                        "success": False,
-                        "message": f"Server returned status {response.status_code}"
-                    }), response.status_code
-                    
+                    return jsonify({"success": False, "message": f"Server returned {resp.status_code}"}), resp.status_code
             except requests.exceptions.ConnectionError:
-                return jsonify({
-                    "success": False,
-                    "message": "Cannot connect to OMLX server. Make sure it's running."
-                }), 503
+                return jsonify({"success": False, "message": "Cannot connect to server."}), 503
             except requests.exceptions.Timeout:
-                return jsonify({
-                    "success": False,
-                    "message": "Connection timeout. Server may be slow or unavailable."
-                }), 504
+                return jsonify({"success": False, "message": "Connection timeout."}), 504
         else:
-            # GET request - use backend's default configuration
             response = requests.get(f"{FASTAPI_URL}/api/v1/models", timeout=10)
-            
             if response.status_code == 200:
-                data = response.json()
-                return jsonify({
-                    "success": True,
-                    **data
-                })
+                return jsonify({"success": True, **response.json()})
             else:
-                return jsonify({
-                    "success": False,
-                    "message": f"Backend error: {response.text}"
-                }), response.status_code
-            
+                return jsonify({"success": False, "message": f"Backend error: {response.text}"}), response.status_code
+
     except requests.exceptions.Timeout:
-        return jsonify({
-            "success": False,
-            "message": "Request timeout. The LLM server may be slow or unavailable."
-        }), 504
-        
+        return jsonify({"success": False, "message": "Request timeout."}), 504
     except requests.exceptions.ConnectionError:
-        return jsonify({
-            "success": False,
-            "message": "Cannot connect to backend server. Please ensure the FastAPI server is running."
-        }), 503
-        
+        return jsonify({"success": False, "message": "Cannot connect to backend server."}), 503
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "message": f"Unexpected error: {str(e)}"
-        }), 500
+        return jsonify({"success": False, "message": f"Unexpected error: {str(e)}"}), 500
 
 
-# Helper functions
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
 def _parse_list_field(value):
-    """
-    Parse a field that can be either a list or comma-separated string.
-    
-    Args:
-        value: list[str] or str
-        
-    Returns:
-        list[str]: Parsed and cleaned list
-    """
     if isinstance(value, list):
-        return [item.strip() for item in value if item.strip()]
+        return [item.strip() for item in value if str(item).strip()]
     elif isinstance(value, str):
         return [item.strip() for item in value.split(',') if item.strip()]
-    else:
-        return []
+    return []
 
 
 def _parse_optional_list_field(value):
-    """
-    Parse an optional field that can be either a list, comma-separated string, or None.
-    
-    Args:
-        value: list[str], str, or None
-        
-    Returns:
-        list[str] or None: Parsed list or None if empty
-    """
     if not value:
         return None
-    
     parsed = _parse_list_field(value)
     return parsed if parsed else None
 

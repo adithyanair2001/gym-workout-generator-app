@@ -6,7 +6,6 @@ from enum import Enum
 
 class ModelType(str, Enum):
     """Supported model types."""
-    MLX = "mlx"
     OMLX = "omlx"
     GGUF = "gguf"
     LOCAL_SERVER = "local_server"
@@ -19,10 +18,7 @@ class ModelConfig(BaseModel):
     """Configuration for LLM model selection."""
     
     model_type: ModelType = Field(..., description="Type of model to use")
-    
-    # MLX Configuration
-    mlx_model_path: Optional[str] = Field(None, description="Path to MLX model directory")
-    
+
     # OMLX Configuration
     llm_base_url: Optional[str] = Field(None, description="Base URL for LLM API")
     llm_model: Optional[str] = Field(None, description="Model name/identifier")
@@ -36,14 +32,7 @@ class ModelConfig(BaseModel):
     # Common LLM Parameters
     temperature: float = Field(0.7, description="Sampling temperature", ge=0.0, le=2.0)
     max_tokens: int = Field(32000, description="Maximum tokens to generate", ge=100, le=100000)
-    
-    @validator('mlx_model_path')
-    def validate_mlx_path(cls, v, values):
-        """Validate MLX model path is provided when model_type is MLX."""
-        if values.get('model_type') == ModelType.MLX and not v:
-            raise ValueError("mlx_model_path is required when model_type is 'mlx'")
-        return v
-    
+
     @validator('gguf_model_path')
     def validate_gguf_path(cls, v, values):
         """Validate GGUF model path is provided when model_type is GGUF."""
@@ -55,8 +44,8 @@ class ModelConfig(BaseModel):
     def validate_llm_url(cls, v, values):
         """Validate LLM base URL is provided for API-based models."""
         model_type = values.get('model_type')
-        if model_type in [ModelType.OMLX, ModelType.LOCAL_SERVER, ModelType.OPENAI, 
-                         ModelType.ANTHROPIC, ModelType.GROQ] and not v:
+        if model_type in [ModelType.OMLX, ModelType.LOCAL_SERVER, ModelType.OPENAI,
+                          ModelType.ANTHROPIC, ModelType.GROQ] and not v:
             raise ValueError(f"llm_base_url is required when model_type is '{model_type.value}'")
         return v
     
