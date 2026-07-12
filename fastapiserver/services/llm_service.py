@@ -47,7 +47,7 @@ class LLMService:
         self.max_tokens = max_tokens
         
         # Determine if this is a local or public API
-        is_local = base_url.startswith('http://127.0.0.1') or base_url.startswith('http://localhost')
+        is_local = base_url.startswith('http://')
         
         # Determine if this is OMLX (port 8000)
         is_omlx = ':8000' in base_url
